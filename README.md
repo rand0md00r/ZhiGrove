@@ -127,3 +127,51 @@ optim_wrapper = dict(
     loss_scale='dynamic',
     dtype='bfloat16',
 )
+
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+# ========= Optim / Sched =========
+max_iters = 10_000
+accumulative_counts = 1
+lr = 1e-4
+betas = (0.9, 0.95)
+weight_decay = 0.05
+max_norm = 1.0
+warmup_ratio = 0.01
+
+optim_type = 'src.optimisers.custom_adamw.CustomAdamW'  # 或 'torch.optim.AdamW'
+optim_wrapper = dict(
+    type=AmpOptimWrapper,
+    optimizer=dict(type=optim_type, lr=lr, betas=betas, weight_decay=weight_decay),
+    paramwise_cfg=dict(
+        custom_keys={
+            'clip_logit_scale': dict(lr_mult=0.1, decay_mult=0.0),
+            'img_clip_head':    dict(lr_mult=1.0),
+            'context_encoder':  dict(lr_mult=1.0),
+        },
+        bias_decay_mult = 0.0,
+        norm_decat_mult = 0.0,
+    ),
+    clip_grad=dict(max_norm=max_norm, error_if_nonfinite=False),
+    accumulative_counts=accumulative_counts,
+    loss_scale="dynamic",
+    dtype="bfloat16" if precision == 'bf16' else "float32",
+)
+
+param_scheduler = [
+    dict(type=LinearLR, start_factor=1e-5, by_epoch=False, begin=0, end=warmup_ratio * max_iters),
+    dict(type=CosineAnnealingLR, T_max=max_iters - int(warmup_ratio * max_iters), by_epoch=False,
+         begin=int(warmup_ratio * max_iters), end=max_iters)
+]
+
+train_cfg = dict(type=TrainLoop, max_iters=max_iters)
+
+# ========= Runtime / Hooks =========
+default_hooks = dict(
+    timer=dict(type=IterTimerHook),
+    logger=dict(type=LoggerHook, log_metric_by_epoch=False, interval=10),
+    param_scheduler=dict(type=ParamSchedulerHook),
+    checkpoint=dict(type=CheckpointHook, by_epoch=False, interval=5_000, max_keep_ckpts=1),
+    sampler_seed=dict(type=DistSamplerSeedHook),
+)
