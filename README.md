@@ -1,3 +1,8 @@
+loss_flow: 165.0
+loss_clip: 139.98146057128906
+loss_kl: 6.96875
+kl_raw: 696.0
+clip_logit_scale: 14.25
 [rank0]: Traceback (most recent call last):
 [rank0]:   File "/usr/local/lib/python3.10/runpy.py", line 196, in _run_module_as_main
 [rank0]:     return _run_code(code, main_globals, None,
@@ -27,43 +32,7 @@
 [rank0]:     outputs = self.runner.model.train_step(
 [rank0]:   File "/usr/local/lib/python3.10/site-packages/mmengine/_strategy/deepspeed.py", line 134, in train_step
 [rank0]:     parsed_loss, log_vars = self.model.module.parse_losses(losses)
-[rank0]:   File "/usr/local/lib/python3.10/site-packages/mmengine/model/base_model/base_model.py", line 171, in parse_losses
-[rank0]:     raise TypeError(
-[rank0]: TypeError: clip_logit_scale is not a tensor or list of tensors
-[rank0]:[W812 10:32:28.401062990 ProcessGroupNCCL.cpp:1496] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
-
-
-``` bash
-{
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python: Debug OpenUni",
-            "type": "python",
-            "request": "launch",
-            "cwd": "/vepfs/DI/yaqi/understand_gen/CrossUni-do",
-            "program": "${workspaceFolder}/scripts/train.py",
-            "args": [
-                "${workspaceFolder}/configs/pretrain/crossuni_unified_debug.py",
-                "--deepspeed",
-                "deepspeed_zero2",
-                "--local_rank=0"
-            ],
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}:${env:PYTHONPATH}",
-                "GPUS_PER_NODE": "1",
-                "NNODES": "1",
-                "NODE_RANK": "0",
-                "MASTER_ADDR": "127.0.0.1",
-                "MASTER_PORT": "29500"
-            },
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "linux": {
-                "MIMode": "lldb"
-            }
-        }
-    ]
-}
-    
-```
+[rank0]:   File "/usr/local/lib/python3.10/site-packages/mmengine/model/base_model/base_model.py", line 165, in parse_losses
+[rank0]:     log_vars.append([loss_name, loss_value.mean()])
+[rank0]: RuntimeError: mean(): could not infer output dtype. Input dtype must be either a floating point or complex dtype. Got: Long
+[rank0]:[W812 10:57:14.187246894 ProcessGroupNCCL.cpp:1496] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
