@@ -1,30 +1,4 @@
-rent default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
-  return fn(*args, **kwargs)
-/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
-  warnings.warn(
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
-  return fn(*args, **kwargs)
-/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
-  warnings.warn(
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
-  return fn(*args, **kwargs)
-/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
-  warnings.warn(
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
-/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
-  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+08/12 11:10:12 - mmengine - INFO - Iter(train) [   10/10000]  base_lr: 9.0918e-06 lr: 9.0918e-06  eta: 1 day, 5:48:53  time: 10.7441  data_time: 2.8399  memory: 31859  loss: 296.6366  loss_flow: 150.5000  loss_clip: 139.3023  loss_kl: 6.8344  kl_raw: 660.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.2500  b_local: 4.0000  b_global: 4.0000
+08/12 11:11:12 - mmengine - INFO - Iter(train) [   20/10000]  base_lr: 1.9193e-05 lr: 1.9193e-05  eta: 23:09:02  time: 5.9578  data_time: 0.0481  memory: 31852  loss: 261.3272  loss_flow: 117.1500  loss_clip: 138.2710  loss_kl: 5.9062  kl_raw: 516.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.5000  clip_acc_t2i: 0.5000  b_local: 4.0000  b_global: 4.0000
+08/12 11:12:11 - mmengine - INFO - Iter(train) [   30/10000]  base_lr: 2.9294e-05 lr: 2.9294e-05  eta: 20:54:05  time: 5.9399  data_time: 0.0508  memory: 31842  loss: 228.4765  loss_flow: 86.2000  loss_clip: 137.8703  loss_kl: 4.4062  kl_raw: 360.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.2500  b_local: 4.0000  b_global: 4.0000
+08/12 11:13:11 - mmengine - INFO - Iter(train) [   40/10000]  base_lr: 3.9395e-05 lr: 3.9395e-05  eta: 19:46:23  time: 5.9462  data_time: 0.0454  memory: 31849  loss: 207.2847  loss_flow: 65.9250  loss_clip: 138.4815  loss_kl: 2.8781  kl_raw: 231.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.0000  b_local: 4.0000  b_global: 4.0000
