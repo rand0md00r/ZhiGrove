@@ -1,4 +1,6 @@
-08/12 11:10:12 - mmengine - INFO - Iter(train) [   10/10000]  base_lr: 9.0918e-06 lr: 9.0918e-06  eta: 1 day, 5:48:53  time: 10.7441  data_time: 2.8399  memory: 31859  loss: 296.6366  loss_flow: 150.5000  loss_clip: 139.3023  loss_kl: 6.8344  kl_raw: 660.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.2500  b_local: 4.0000  b_global: 4.0000
-08/12 11:11:12 - mmengine - INFO - Iter(train) [   20/10000]  base_lr: 1.9193e-05 lr: 1.9193e-05  eta: 23:09:02  time: 5.9578  data_time: 0.0481  memory: 31852  loss: 261.3272  loss_flow: 117.1500  loss_clip: 138.2710  loss_kl: 5.9062  kl_raw: 516.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.5000  clip_acc_t2i: 0.5000  b_local: 4.0000  b_global: 4.0000
-08/12 11:12:11 - mmengine - INFO - Iter(train) [   30/10000]  base_lr: 2.9294e-05 lr: 2.9294e-05  eta: 20:54:05  time: 5.9399  data_time: 0.0508  memory: 31842  loss: 228.4765  loss_flow: 86.2000  loss_clip: 137.8703  loss_kl: 4.4062  kl_raw: 360.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.2500  b_local: 4.0000  b_global: 4.0000
-08/12 11:13:11 - mmengine - INFO - Iter(train) [   40/10000]  base_lr: 3.9395e-05 lr: 3.9395e-05  eta: 19:46:23  time: 5.9462  data_time: 0.0454  memory: 31849  loss: 207.2847  loss_flow: 65.9250  loss_clip: 138.4815  loss_kl: 2.8781  kl_raw: 231.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.2500  clip_acc_t2i: 0.0000  b_local: 4.0000  b_global: 4.0000
+names = dict(self.named_parameters())
+opt_param_ids = {id(p) for g in self.runner.optim_wrapper.optimizer.param_groups for p in g['params']}
+
+for key in ['clip_logit_scale', 'img_clip_head.weight']:
+    p = names.get(key, None)
+    print(f'[opt/cover] {key}: present={p is not None}, requires_grad={getattr(p, "requires_grad", None)}, in_optim={(id(p) in opt_param_ids) if p is not None else None}')
