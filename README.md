@@ -1,88 +1,35 @@
-from mmengine.hooks import Hook
-import torch
-import torch.distributed as dist
-
-class ClipHeadDebugHook(Hook):
-    def _get_param_groups(self, runner):
-        # 尽可能兼容不同 wrapper/deepspeed 形态
-        optw = runner.optim_wrapper
-        opt  = getattr(optw, 'optimizer', None)
-        if hasattr(opt, 'param_groups'):
-            return opt.param_groups
-        if hasattr(opt, 'optimizer') and hasattr(opt.optimizer, 'param_groups'):
-            return opt.optimizer.param_groups
-        opt2 = getattr(optw, '_optimizer', None)
-        if hasattr(opt2, 'param_groups'):
-            return opt2.param_groups
-        return None
-
-    def after_train_iter(self, runner, batch_idx, data_batch=None, outputs=None):
-        # 只在前几步打印，避免刷屏
-        if batch_idx not in (0, 1, 10):
-            return
-
-        # DeepSpeed 下 model 被包裹，取真实模块
-        m = runner.model.module if hasattr(runner.model, 'module') else runner.model
-
-        # 世界大小与 b_*（如果你在 loss 里返回了它们）
-        ws = dist.get_world_size() if (dist.is_available() and dist.is_initialized()) else 1
-        b_local  = float(outputs.get('b_local',  float('nan')))
-        b_global = float(outputs.get('b_global', float('nan')))
-        print(f'[clipdbg] world_size={ws}  b_local={b_local}  b_global={b_global}')
-
-        # requires_grad & grad 均值（证明有反传）
-        def gmean(x):
-            return None if x is None else float(x.detach().abs().mean().cpu())
-        print('[clipdbg] requires_grad:',
-              'logit_scale', getattr(m.clip_logit_scale, 'requires_grad', None),
-              'img_head',    getattr(m.img_clip_head.weight, 'requires_grad', None))
-        print('[clipdbg] grad_mean:',
-              'logit_scale', gmean(getattr(m.clip_logit_scale, 'grad', None)),
-              'img_head',    gmean(getattr(m.img_clip_head.weight, 'grad', None)))
-
-        # optimizer 覆盖 & 学习率/权重衰减
-        groups = self._get_param_groups(runner)
-        if groups is None:
-            print('[clipdbg] param_groups not found on optimizer')
-            return
-        pid = id(m.clip_logit_scale)
-        hid = id(m.img_clip_head.weight)
-        found_p = found_h = False
-        for gi, g in enumerate(groups):
-            ids = {id(p) for p in g['params']}
-            has_p = pid in ids
-            has_h = hid in ids
-            if has_p or has_h:
-                print(f'[clipdbg] group#{gi} lr={g.get("lr")} wd={g.get("weight_decay")}  '
-                      f'contains logit:{has_p} head:{has_h}')
-            found_p |= has_p
-            found_h |= has_h
-        if not (found_p and found_h):
-            print(f'[clipdbg][WARN] not covered by optimizer: logit={found_p} head={found_h}')
-
-
-
-
-
-
-
-custom_hooks = [
-    dict(type='ClipHeadDebugHook', priority=50),
-]
-
-
-
-
-paramwise_cfg=dict(
-    custom_keys={
-        'clip_logit_scale': dict(lr_mult=1.0, decay_mult=0.0),
-        'img_clip_head':    dict(lr_mult=1.0),
-        'context_encoder':  dict(lr_mult=1.0),
-    },
-    bias_decay_mult=0.0,
-    norm_decay_mult=0.0,
-)
-
-
-
-
+[clip/debug] dist_initialized=True, world_size=1 
+tensor(2.7869, device='cuda:0')
+[clipdbg] world_size=1  b_local=16.0  b_global=16.0
+[clipdbg] requires_grad: logit_scale True img_head True
+[clipdbg] grad_mean: logit_scale None img_head None
+[clipdbg][WARN] not covered by optimizer: logit=False head=False
+/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+tensor(2.7681, device='cuda:0')
+[clipdbg] world_size=1  b_local=16.0  b_global=16.0
+[clipdbg] requires_grad: logit_scale True img_head True
+[clipdbg] grad_mean: logit_scale None img_head None
+[clipdbg][WARN] not covered by optimizer: logit=False head=False
+tensor(2.7742, device='cuda:0')
+tensor(2.7830, device='cuda:0')
+tensor(2.7906, device='cuda:0')
+tensor(2.7615, device='cuda:0')
+tensor(2.7685, device='cuda:0')
+tensor(2.7720, device='cuda:0')
+tensor(2.7797, device='cuda:0')
+tensor(2.7784, device='cuda:0')
+08/12 15:28:46 - mmengine - INFO - Iter(train) [   10/10000]  base_lr: 9.0918e-06 lr: 9.0918e-06  eta: 20:09:02  time: 7.2615  data_time: 0.0495  memory: 36388  loss: 437.3079  loss_flow: 152.9000  loss_clip: 277.6297  loss_kl: 6.7781  kl_raw: 640.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.0625  clip_acc_t2i: 0.0625  b_local: 16.0000  b_global: 16.0000
+tensor(2.7476, device='cuda:0')
+[clipdbg] world_size=1  b_local=16.0  b_global=16.0
+[clipdbg] requires_grad: logit_scale True img_head True
+[clipdbg] grad_mean: logit_scale None img_head None
+[clipdbg][WARN] not covered by optimizer: logit=False head=False
