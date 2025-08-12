@@ -1,21 +1,30 @@
-# text2image_loss 返回前自检
-
-for k, v in ret.items():
-    if isinstance(v, torch.Tensor):
-        assert v.dim() >= 0, f'{k} is weird tensor'
-        assert v.dtype.is_floating_point or v.is_complex(), f'{k} must be float/complex tensor'
-    elif isinstance(v, (list, tuple)):
-        assert all(isinstance(x, torch.Tensor) for x in v), f'{k} must be list of tensors'
-
-
-
-# 统一把所有非 Tensor 的标量转成 float32 Tensor；把整型 Tensor 转 float32
-for k, v in list(ret.items()):
-    if isinstance(v, torch.Tensor):
-        if not (v.is_floating_point() or v.is_complex()):
-            ret[k] = v.to(torch.float32)
-    elif isinstance(v, (int, float)):
-        ret[k] = torch.tensor(float(v), device=self.device, dtype=torch.float32)
-    elif isinstance(v, (list, tuple)) and all(isinstance(x, torch.Tensor) for x in v):
-        ret[k] = [x.to(torch.float32) if not (x.is_floating_point() or x.is_complex()) else x for x in v]
-    # 其他类型就别返回到 losses 里了
+rent default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/DI/yaqi/understand_gen/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
