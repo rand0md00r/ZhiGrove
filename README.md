@@ -1,30 +1,72 @@
-[clip/debug] dist_initialized=True, world_size=1 
-tensor(2.7869, device='cuda:0')
-[autograd] clip_logit_scale grad None? False  img_head grad None? False  norms: 0.0240478515625 0.00021648406982421875
-[clipdbg/update] Δlogit_scale=0.000000e+00  Δimg_head=1.490116e-08
-[clipdbg] world_size=1  b_local=16.0  b_global=16.0
-[clipdbg] requires_grad: logit_scale True img_head True
-[clipdbg] grad_mean: logit_scale None img_head None
-[clipdbg][WARN] not covered by optimizer: logit=False head=False
-tensor(2.7681, device='cuda:0')
-[autograd] clip_logit_scale grad None? False  img_head grad None? False  norms: 0.0009307861328125 0.0002079010009765625
-[clipdbg/update] Δlogit_scale=0.000000e+00  Δimg_head=1.525879e-05
-[clipdbg] world_size=1  b_local=16.0  b_global=16.0
-[clipdbg] requires_grad: logit_scale True img_head True
-[clipdbg] grad_mean: logit_scale None img_head None
-[clipdbg][WARN] not covered by optimizer: logit=False head=False
-tensor(2.7740, device='cuda:0')
-tensor(2.7830, device='cuda:0')
-tensor(2.7910, device='cuda:0')
-tensor(2.7614, device='cuda:0')
-tensor(2.7691, device='cuda:0')
-tensor(2.7719, device='cuda:0')
-tensor(2.7784, device='cuda:0')
-tensor(2.7783, device='cuda:0')
-08/12 16:12:58 - mmengine - INFO - Iter(train) [   10/10000]  base_lr: 9.0918e-06 lr: 9.0918e-06  eta: 19:35:59  time: 7.0630  data_time: 0.0662  memory: 36411  loss: 437.3010  loss_flow: 152.9000  loss_clip: 277.6229  loss_kl: 6.7781  kl_raw: 640.0000  clip_logit_scale: 14.2500  clip_acc_i2t: 0.0000  clip_acc_t2i: 0.0625  b_local: 16.0000  b_global: 16.0000
-tensor(2.7487, device='cuda:0')
-[clipdbg/update] Δlogit_scale=0.000000e+00  Δimg_head=1.220703e-04
-[clipdbg] world_size=1  b_local=16.0  b_global=16.0
-[clipdbg] requires_grad: logit_scale True img_head True
-[clipdbg] grad_mean: logit_scale None img_head None
-[clipdbg][WARN] not covered by optimizer: logit=False head=False
+import torch
+from mmengine.hooks import Hook
+from mmengine.registry import HOOKS
+
+@HOOKS.register_module()
+class EnsureClipParamsInOptimHook(Hook):
+    def _get_opt(self, runner):
+        ow = runner.optim_wrapper
+        if hasattr(ow, 'optimizer') and hasattr(ow.optimizer, 'param_groups'):
+            return ow.optimizer
+        if hasattr(ow, '_optimizer') and hasattr(ow._optimizer, 'param_groups'):
+            return ow._optimizer
+        return None
+
+    def before_train(self, runner):
+        m = runner.model.module if hasattr(runner.model, 'module') else runner.model
+        opt = self._get_opt(runner)
+        if opt is None:
+            print('[ensure] cannot locate optimizer')
+            return
+
+        # 待确保的参数对象
+        targets = {
+            'clip_logit_scale': m.clip_logit_scale,
+            'img_clip_head.weight': m.img_clip_head.weight,
+        }
+
+        # 拉直已有的 param 引用集合
+        existing = set()
+        for g in opt.param_groups:
+            for p in g['params']:
+                existing.add(p)
+
+        # 对每个目标，若不在 optimizer 中，则 add_param_group
+        added = []
+        for name, p in targets.items():
+            if p not in existing:
+                # 独立设置一个合理的 lr / wd（会在 paramwise_cfg 之上生效）
+                opt.add_param_group({
+                    'params': [p],
+                    'lr': opt.param_groups[0].get('lr', 1e-4),  # 复用组0的lr
+                    'weight_decay': 0.0 if name.startswith('clip_logit_scale') else opt.param_groups[0].get('weight_decay', 0.0),
+                })
+                added.append(name)
+
+        print(f'[ensure] added to optimizer: {added}' if added else '[ensure] all present')
+
+
+
+
+# __init__ 里
+import math, torch.nn as nn, torch
+self.clip_temp = nn.Linear(1, 1, bias=False)  # 参数形状 [1,1]
+with torch.no_grad():
+    self.clip_temp.weight.copy_(torch.tensor([[math.log(1/0.07)]], dtype=torch.float32))
+self.clip_temp.weight.requires_grad_(True)
+self.clip_temp.weight.data = self.clip_temp.weight.data.to(torch.float32)  # FP32 保精度
+
+# compute_clip_loss 里
+logit_scale_log = self.clip_temp.weight[0, 0]
+logit_scale = torch.exp(logit_scale_log.float().clamp(min=0.0, max=math.log(100.0)))
+logit_scale_scalar = float(logit_scale.detach().item())
+
+# 调整 paramwise_cfg 里的 key：'clip_temp' 或 'clip_temp.weight'
+
+
+
+
+
+
+
+print([n for n,_ in m.named_parameters() if 'clip' in n])
