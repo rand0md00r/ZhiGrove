@@ -58,3 +58,11 @@ def compute_clip_loss(self, z_text: torch.Tensor, v_img: torch.Tensor):
 
 
 ``` 
+if hasattr(self, '_clip_debug'):
+    ret.update({
+        'clip_acc_i2t': self._clip_debug['clip_acc_i2t'],
+        'clip_acc_t2i': self._clip_debug['clip_acc_t2i'],
+        'clip_logit_scale': self._clip_debug['clip_logit_scale_val'],
+        'b_local': self._clip_debug['b_local'],
+        'b_global': self._clip_debug['b_global'],
+    })
