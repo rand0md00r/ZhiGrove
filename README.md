@@ -33,3 +33,50 @@ tensor(2.7476, device='cuda:0')
 [clipdbg] requires_grad: logit_scale True img_head True
 [clipdbg] grad_mean: logit_scale None img_head None
 [clipdbg][WARN] not covered by optimizer: logit=False head=False
+
+
+
+
+
+
+# 在你的 Hook 里加一个方法（或把原来的 after_train_iter 拷贝到这个回调里）：
+def after_train_backward(self, runner, batch_idx, data_batch=None, outputs=None):
+    m = runner.model.module if hasattr(runner.model, 'module') else runner.model
+    def gmean(x): return None if x is None else float(x.detach().abs().mean().cpu())
+    print('[clipdbg/backward] grad_mean:',
+          'logit_scale', gmean(getattr(m.clip_logit_scale, 'grad', None)),
+          'img_head',    gmean(getattr(m.img_clip_head.weight, 'grad', None)))
+
+
+
+
+
+
+if getattr(self, '_debug_autograd_steps', 0) < 2 and self.training:
+    g_logit, g_head = torch.autograd.grad(
+        loss, [self.clip_logit_scale, self.img_clip_head.weight],
+        retain_graph=True, allow_unused=True
+    )
+    print('[autograd] clip_logit_scale grad None?', g_logit is None,
+          ' img_head grad None?', g_head is None,
+          ' norms:', None if g_logit is None else float(g_logit.abs().mean().cpu()),
+                    None if g_head is None else float(g_head.abs().mean().cpu()))
+    self._debug_autograd_steps = getattr(self, '_debug_autograd_steps', 0) + 1
+
+
+
+# 在 Hook.before_train_iter 里缓存一次
+def before_train_iter(self, runner, batch_idx, data_batch=None):
+    m = runner.model.module if hasattr(runner.model, 'module') else runner.model
+    self._snap = dict(
+        logit_scale = m.clip_logit_scale.detach().clone(),
+        img_head    = m.img_clip_head.weight.detach().clone()
+    )
+
+# 在 after_train_iter 里比较更新幅度
+def after_train_iter(self, runner, batch_idx, data_batch=None, outputs=None):
+    if batch_idx not in (0,1,10): return
+    m = runner.model.module if hasattr(runner.model, 'module') else runner.model
+    d_logit = float((m.clip_logit_scale.detach() - self._snap['logit_scale']).abs().max().cpu())
+    d_head  = float((m.img_clip_head.weight.detach() - self._snap['img_head']).abs().max().cpu())
+    print(f'[clipdbg/update] Δlogit_scale={d_logit:e}  Δimg_head={d_head:e}')
