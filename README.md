@@ -31,3 +31,39 @@
 [rank0]:     raise TypeError(
 [rank0]: TypeError: clip_logit_scale is not a tensor or list of tensors
 [rank0]:[W812 10:32:28.401062990 ProcessGroupNCCL.cpp:1496] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+
+
+``` bash
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Debug OpenUni",
+            "type": "python",
+            "request": "launch",
+            "cwd": "/vepfs/DI/yaqi/understand_gen/CrossUni-do",
+            "program": "${workspaceFolder}/scripts/train.py",
+            "args": [
+                "${workspaceFolder}/configs/pretrain/crossuni_unified_debug.py",
+                "--deepspeed",
+                "deepspeed_zero2",
+                "--local_rank=0"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}:${env:PYTHONPATH}",
+                "GPUS_PER_NODE": "1",
+                "NNODES": "1",
+                "NODE_RANK": "0",
+                "MASTER_ADDR": "127.0.0.1",
+                "MASTER_PORT": "29500"
+            },
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "linux": {
+                "MIMode": "lldb"
+            }
+        }
+    ]
+}
+    
+```
