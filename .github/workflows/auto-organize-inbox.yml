@@ -24,6 +24,7 @@ jobs:
       
       - name: Auto Organize Inbox
         run: |
+          set -e  # 遇到错误时退出
           echo "Starting auto-organize inbox..."
           
           # 获取当前日期和周次信息
@@ -98,6 +99,7 @@ jobs:
                 ((processed_count++))
               else
                 echo "  Error: File move failed"
+                exit 1
               fi
               
               echo ""
@@ -114,10 +116,13 @@ jobs:
           else
             echo "No files need organization"
           fi
+          
+          echo "Auto-organize step completed successfully"
       
       - name: Check for changes
         id: check_changes
         run: |
+          echo "Checking for changes..."
           if [ -n "$(git status --porcelain)" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Changes detected"
@@ -125,6 +130,7 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No changes to commit"
           fi
+          echo "Change check completed"
       
       - name: Commit and push changes
         if: steps.check_changes.outputs.has_changes == 'true'
