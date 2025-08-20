@@ -32,6 +32,9 @@ def create_quick_note(content, note_type="idea", title=None):
     elif note_type == "report":
         dir_path = f"50-reports/weekly/{year}"
         filename = f"week-{datetime.now().strftime('%V')}.md"
+    elif note_type == "knowledge":
+        dir_path = f"10-knowledge"
+        filename = f"{date}-{title}.md"
     else:
         dir_path = f"00-inbox"
         filename = f"{date}-{title}.md"
@@ -158,6 +161,115 @@ summary: {content[:100] if len(content) > 100 else content}
 ## 💡 思考与反思
 - 
 """
+    elif note_type == "knowledge":
+        template = f"""---
+title: {title}
+date: {date}
+tags: []
+status: draft
+category: knowledge
+difficulty: intermediate
+prerequisites: []
+related: []
+links:
+  official: 
+  paper: 
+  code: 
+  tutorial: 
+  project: 
+summary: {content[:100] if len(content) > 100 else content}
+---
+
+# {title}
+
+## 📚 概述
+
+### 核心概念
+{content}
+
+### 关键特点
+- 
+
+### 应用场景
+- 
+
+## 🔍 详细内容
+
+### 基本原理
+- 
+
+### 核心算法/方法
+- 
+
+### 技术架构
+- 
+
+## 💡 最佳实践
+
+### 使用建议
+- 
+
+### 常见陷阱
+- 
+
+### 性能优化
+- 
+
+## 🧪 实践案例
+
+### 示例代码
+```python
+# 代码示例
+```
+
+### 实际应用
+- 
+
+### 效果评估
+- 
+
+## 🔗 相关知识
+
+### 前置知识
+- 
+
+### 相关技术
+- 
+
+### 扩展阅读
+- 
+
+## 📊 总结与反思
+
+### 核心收获
+- 
+
+### 适用条件
+- 
+
+### 局限性
+- 
+
+### 改进方向
+- 
+
+## 📝 更新记录
+
+| 日期 | 更新内容 | 更新人 |
+|------|----------|--------|
+| {date} | 初始创建 | |
+
+## 🏷️ 标签
+
+- 技术领域：
+- 难度等级：
+- 应用领域：
+- 相关项目：
+
+---
+
+> **注意**：这是一个知识沉淀文档，内容应该经过验证和测试，确保准确性和实用性。
+"""
     else:
         template = f"""# {title}
 
@@ -180,7 +292,7 @@ summary: {content[:100] if len(content) > 100 else content}
 def main():
     parser = argparse.ArgumentParser(description="快速创建笔记")
     parser.add_argument("content", help="笔记内容")
-    parser.add_argument("-t", "--type", choices=["idea", "paper", "experiment", "report", "inbox"], 
+    parser.add_argument("-t", "--type", choices=["idea", "paper", "experiment", "report", "knowledge", "inbox"], 
                        default="idea", help="笔记类型")
     parser.add_argument("--title", help="笔记标题")
     

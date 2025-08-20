@@ -17,6 +17,7 @@ case "$1" in
       echo "或者: $0 note -t idea '想法内容'"
       echo "或者: $0 note -t paper '论文标题'"
       echo "或者: $0 note -t experiment '实验名称'"
+      echo "或者: $0 note -t knowledge '知识领域'"
       exit 1
     fi
     
@@ -63,6 +64,15 @@ case "$1" in
     python scripts/quick_note.py "$2" -t report
     ;;
     
+  "knowledge"|"k")
+    if [ -z "$2" ]; then
+      echo "📚 快速创建知识文档..."
+      echo "用法: $0 knowledge '知识领域'"
+      exit 1
+    fi
+    python scripts/quick_note.py "$2" -t knowledge
+    ;;
+    
   "inbox"|"in")
     if [ -z "$2" ]; then
       echo "📥 快速记录到收件箱..."
@@ -95,6 +105,7 @@ case "$1" in
     echo "  paper, p      - 快速创建论文笔记"
     echo "  experiment, exp - 快速创建实验记录"
     echo "  report, r     - 快速创建报告"
+    echo "  knowledge, k  - 快速创建知识文档"
     echo "  inbox, in     - 快速记录到收件箱"
     echo "  note, n       - 通用快速记录"
     echo ""
@@ -108,6 +119,7 @@ case "$1" in
     echo "💡 快速开始："
     echo "  $0 idea '我的新想法'"
     echo "  $0 paper '论文标题'"
+    echo "  $0 knowledge 'LLM基础知识'"
     echo "  $0 status"
     echo ""
     echo "🧪 测试功能："
