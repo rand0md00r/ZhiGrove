@@ -1,0 +1,146 @@
+name: Weekly Workflow Reminder
+
+on:
+  schedule: [{ cron: "0 9 * * 0" }]  # 每周日上午9点
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  create-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Weekly Reminder Issue
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // 获取当前日期
+            const now = new Date();
+            const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            
+            // 格式化日期
+            const formatDate = (date) => {
+              return date.toLocaleDateString('zh-CN', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long'
+              });
+            };
+            
+            // 创建提醒标题
+            const title = `📅 本周知识库工作流提醒 (${formatDate(now)})`;
+            
+            // 创建提醒内容
+            const body = `## 🎯 本周知识库整理任务
+            
+            > 📅 提醒时间: ${formatDate(now)}  
+            > 📅 下次提醒: ${formatDate(nextWeek)}
+            
+            ### 📥 收件箱整理 (优先级: ⭐⭐⭐)
+            - [ ] **清理临时文件** - 目标：<10个文件
+            - [ ] **分类新内容** - 按类型整理到对应目录
+            - [ ] **删除重复内容** - 合并相似信息
+            - [ ] **标记重要内容** - 添加标签和关键词
+            
+            ### 🔗 内容关联 (优先级: ⭐⭐)
+            - [ ] **建立知识链接** - 检查新内容与已有知识的关联
+            - [ ] **更新相关文档** - 添加交叉引用和链接
+            - [ ] **完善标签体系** - 统一标签命名和分类
+            - [ ] **检查孤立文件** - 避免知识孤岛
+            
+            ### 📚 知识沉淀 (优先级: ⭐⭐)
+            - [ ] **整理成熟内容** - 将验证过的内容移到知识库
+            - [ ] **更新知识结构** - 检查知识体系的完整性
+            - [ ] **补充缺失内容** - 识别知识空白并补充
+            - [ ] **优化知识组织** - 重新组织知识结构
+            
+            ### 📋 下周计划 (优先级: ⭐)
+            - [ ] **设定学习目标** - 明确下周要学习的内容
+            - [ ] **安排实验计划** - 规划实验和调研活动
+            - [ ] **更新TODO列表** - 整理待办事项
+            - [ ] **检查工具状态** - 确保脚本和工具正常工作
+            
+            ---
+            
+            ## 🛠️ 快速操作命令
+            
+            ### 检查状态
+            \`\`\`bash
+            # 检查知识库健康状态
+            ./scripts/quick_start.sh status
+            \`\`\`
+            
+            ### 快速记录
+            \`\`\`bash
+            # 记录想法
+            ./scripts/quick_start.sh idea "新想法"
+            
+            # 创建论文笔记
+            ./scripts/quick_start.sh paper "论文标题"
+            
+            # 记录实验
+            ./scripts/quick_start.sh experiment "实验名称"
+            \`\`\`
+            
+            ### 格式检查
+            \`\`\`bash
+            # 检查Markdown格式
+            ./scripts/quick_start.sh check
+            \`\`\`
+            
+            ---
+            
+            ## 📊 本周目标
+            
+            - [ ] 收件箱文件数量 < 10
+            - [ ] 新增至少1篇论文笔记
+            - [ ] 记录至少2个新想法
+            - [ ] 整理至少1个知识条目
+            - [ ] 运行本地检查脚本
+            
+            ---
+            
+            ## 💡 工作流提示
+            
+            1. **先记录，后整理** - 不要纠结格式，先记下来
+            2. **渐进式整理** - 不追求一次性完美，持续改进
+            3. **关联性优先** - 新知识要与已有知识建立联系
+            4. **实用性导向** - 记录是为了使用，定期回顾和应用
+            
+            ---
+            
+            *此提醒由GitHub Actions自动生成，每周日更新*  
+            *建议在周日完成本周整理，为下周做好准备*`;
+            
+            try {
+              // 创建Issue
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['reminder', 'weekly', 'workflow']
+              });
+              
+              console.log(`✅ 周提醒Issue创建成功: #${issue.data.number}`);
+              
+              // 添加评论，包含快速链接
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.data.number,
+                body: `## 🔗 快速链接
+                
+                - 📖 [工作流指南](../../WORKFLOW.md)
+                - 📥 [收件箱指南](../../00-inbox/README.md)
+                - 📚 [知识沉淀指南](../../10-knowledge/README.md)
+                - 🛠️ [脚本说明](../../scripts/README.md)
+                
+                ---
+                
+                💡 **提示**: 点击上面的链接查看详细指南，或使用快速命令开始整理工作。`
+              });
+              
+            } catch (error) {
+              console.error('❌ 创建Issue失败:', error);
+              core.setFailed('Failed to create reminder issue');
+            }

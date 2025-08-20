@@ -82,6 +82,11 @@ case "$1" in
     python scripts/check_markdown.py
     ;;
     
+  "test-organize"|"to")
+    echo "🧪 测试自动整理功能..."
+    python scripts/test_organize.py
+    ;;
+    
   "help"|"h"|"")
     echo "📚 可用命令："
     echo ""
@@ -97,6 +102,7 @@ case "$1" in
     echo "  status, s     - 检查知识库状态"
     echo "  update, u     - 更新索引"
     echo "  check, c      - 检查Markdown格式"
+    echo "  test-organize, to - 测试自动整理功能"
     echo "  help, h       - 显示帮助"
     echo ""
     echo "💡 快速开始："
@@ -104,11 +110,15 @@ case "$1" in
     echo "  $0 paper '论文标题'"
     echo "  $0 status"
     echo ""
+    echo "🧪 测试功能："
+    echo "  $0 test-organize  # 测试自动整理"
+    echo ""
     echo "📖 更多信息："
     echo "  - 工作流指南: WORKFLOW.md"
     echo "  - 收件箱指南: 00-inbox/README.md"
     echo "  - 知识沉淀指南: 10-knowledge/README.md"
     echo "  - 脚本说明: scripts/README.md"
+    echo "  - GitHub Actions: GITHUB_ACTIONS_GUIDE.md"
     ;;
     
   *)

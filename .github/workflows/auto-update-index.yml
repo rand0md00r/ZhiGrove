@@ -1,0 +1,54 @@
+name: Auto Update Index
+
+on:
+  push:
+    paths: ['**/*.md']
+    branches: [ main, master ]
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  update-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Update README Index
+        run: |
+          echo "🔄 开始更新索引..."
+          python scripts/build_index.py
+          echo "✅ 索引更新完成"
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "📝 检测到索引变更"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ 索引无需更新"
+          fi
+      
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "📤 提交索引更新..."
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git commit -m "🔄 Auto-update index [skip ci]"
+          git push
+          echo "✅ 索引更新已推送"
+      
+      - name: No changes message
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: |
+          echo "ℹ️ 无需更新索引"

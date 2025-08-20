@@ -1,0 +1,150 @@
+name: Auto Organize Inbox
+
+on:
+  schedule: [{ cron: "0 6 * * *" }]  # 每天早上6点
+  workflow_dispatch: # 允许手动触发
+
+jobs:
+  organize-inbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Auto Organize Inbox
+        run: |
+          echo "🔄 开始自动整理收件箱..."
+          
+          # 获取当前日期和周次信息
+          current_date=$(date '+%Y-%m-%d')
+          current_year=$(date '+%Y')
+          current_week=$(date '+%V')  # ISO周次
+          
+          echo "📅 当前日期: $current_date"
+          echo "📊 当前周次: $current_week"
+          
+          # 创建周目录（如果不存在）
+          week_dir="00-inbox/week-${current_week:0:2}"
+          mkdir -p "$week_dir"
+          echo "📁 周目录: $week_dir"
+          
+          # 查找收件箱中的文件
+          inbox_dir="00-inbox"
+          if [ ! -d "$inbox_dir" ]; then
+            echo "❌ 收件箱目录不存在"
+            exit 1
+          fi
+          
+          # 处理收件箱中的文件
+          processed_count=0
+          for file in "$inbox_dir"/*.md; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "📄 处理文件: $filename"
+              
+              # 跳过README.md和周次目录
+              if [ "$filename" = "README.md" ] || [[ "$filename" =~ ^week-[0-9]+$ ]]; then
+                echo "   ⏭️  跳过README.md和周次目录"
+                continue
+              fi
+              
+              # 跳过已经在周次目录中的文件
+              if [[ "$filename" =~ ^\[[0-9]{6}-[0-9]{4}\].*\.md$ ]]; then
+                echo "   ⏭️  跳过已整理的文件: $filename"
+                continue
+              fi
+              
+              # 获取文件创建时间
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS
+                create_time=$(stat -f "%SB" "$file" | date -f "%b %d %H:%M:%S %Y %z" "+%y%m%d-%H%M" 2>/dev/null || echo "")
+              else
+                # Linux/Windows
+                create_time=$(stat -c "%y" "$file" | cut -d' ' -f1,2 | date -d "$(cat)" "+%y%m%d-%H%M" 2>/dev/null || echo "")
+              fi
+              
+              # 如果无法获取创建时间，使用当前时间
+              if [ -z "$create_time" ]; then
+                create_time=$(date '+%y%m%d-%H%M')
+                echo "   ⚠️  无法获取创建时间，使用当前时间: $create_time"
+              fi
+              
+              # 提取主题（去掉.md扩展名）
+              topic=$(echo "$filename" | sed 's/\.md$//')
+              
+              # 生成新文件名
+              new_filename="[${create_time}]${topic}.md"
+              new_filepath="$week_dir/$new_filename"
+              
+              echo "   📝  原文件名: $filename"
+              echo "   🏷️  主题: $topic"
+              echo "   🕐  时间: $create_time"
+              echo "   ✨  新文件名: $new_filename"
+              
+              # 移动文件到周目录
+              if mv "$file" "$new_filepath"; then
+                echo "   ✅  文件已移动到: $new_filepath"
+                ((processed_count++))
+              else
+                echo "   ❌  文件移动失败"
+              fi
+              
+              echo ""
+            fi
+          done
+          
+          echo "📊 整理完成统计:"
+          echo "   - 处理文件数: $processed_count"
+          echo "   - 目标目录: $week_dir"
+          
+          # 检查是否有变更
+          if [ $processed_count -gt 0 ]; then
+            echo "📝 检测到文件变更，准备提交..."
+          else
+            echo "ℹ️  没有文件需要整理"
+          fi
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "📝 检测到文件变更"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ 无需提交变更"
+          fi
+      
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "📤 提交整理结果..."
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m "🔄 Auto-organize inbox: move files to week-$current_week [skip ci]"
+          git push
+          echo "✅ 整理结果已推送"
+      
+      - name: No changes message
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: |
+          echo "ℹ️  无需提交变更"
+      
+      - name: Summary
+        run: |
+          echo ""
+          echo "🎉 收件箱自动整理完成！"
+          echo "📅 日期: $current_date"
+          echo "📊 周次: $current_week"
+          echo "📁 目录: week-${current_week:0:2}"
+          echo "📄 处理文件: $processed_count"
+          echo ""
+          echo "💡 提示: 文件已按周次整理到 $week_dir 目录"
