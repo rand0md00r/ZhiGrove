@@ -1,6 +1,6 @@
 ---
 title:
-date: {{DATE}}
+date: 2025-08-20
 tags: []
 status: draft
 links:

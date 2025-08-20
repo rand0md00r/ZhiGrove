@@ -1,0 +1,12 @@
+name: Link Check
+on:
+  schedule: [{ cron: "0 2 * * 1" }]  # 每周一
+  workflow_dispatch:
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: lycheeverse/lychee-action@v1
+        with:
+          args: --exclude-mail --timeout 15 --no-progress **/*.md
