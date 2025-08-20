@@ -43,7 +43,15 @@
 - **完整工作流**：见 `WORKFLOW.md`
 
 ### 近期更新
-（由 `scripts/build_index.py` 自动更新）
+
+**论文**  
+- 2025-08-20 · [2025-08-20-](20-papers/2025/2025-08-20-.md)
+- 2025-08-20 · [2025-08-20-vtla-preference-learning](20-papers/2025/2025-08-20-vtla-preference-learning.md)
+
+**闪念/会议**  
+- 2025-08-20 · [20250819-ideation-cfg-schedule](30-ideas/2025/20250819-ideation-cfg-schedule.md)
+
+**实验**
 
 ## 📁 目录导航
 
