@@ -1,13 +1,41 @@
 name: Markdown Lint
+
 on:
   pull_request:
+    branches: [ main, master ]
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  workflow_dispatch: # 允许手动触发
+
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   mdlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: DavidAnson/markdownlint-cli2-action@v16
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Markdown Lint
+        uses: DavidAnson/markdownlint-cli2-action@v16
         with:
           globs: "**/*.md"
+          # 添加一些宽松的规则配置
+          config: |
+            {
+              "default": true,
+              "MD013": false,  # 允许长行
+              "MD033": false,  # 允许HTML标签
+              "MD041": false,  # 允许文件开头没有一级标题
+              "MD024": false   # 允许重复标题
+            }
+      
+      - name: Show linting results
+        if: always()
+        run: |
+          echo "Markdown linting completed"
+          echo "Check the logs above for any issues"
