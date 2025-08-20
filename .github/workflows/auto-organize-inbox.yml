@@ -4,6 +4,10 @@ on:
   schedule: [{ cron: "0 6 * * *" }]  # 每天早上6点
   workflow_dispatch: # 允许手动触发
 
+permissions:
+  contents: write
+  pull-requests: read
+
 jobs:
   organize-inbox:
     runs-on: ubuntu-latest
