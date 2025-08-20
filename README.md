@@ -24,6 +24,9 @@
 # 记录实验
 ./scripts/quick_start.sh experiment "实验名称"
 
+# 创建报告
+./scripts/quick_start.sh report "报告标题"
+
 # 记录到收件箱
 ./scripts/quick_start.sh inbox "临时内容"
 ```
@@ -63,17 +66,20 @@
 
 ## 🛠️ 工具脚本
 
-- `scripts/quick_start.sh` - 快速启动脚本（推荐使用）
-- `scripts/quick_note.py` - 快速记录脚本
+- `scripts/quick_start.sh` - **统一入口脚本（推荐使用）**
+- `scripts/quick_note.py` - 快速记录核心功能
 - `scripts/status_check.py` - 状态检查脚本
 - `scripts/build_index.py` - 索引更新脚本
-- `scripts/new.sh` - 传统创建脚本
+- `scripts/README.md` - 脚本功能说明
+
+> **注意**：`new.sh` 已被整合到 `quick_start.sh` 中，避免功能重复
 
 ## 📖 使用指南
 
 - [工作流指南](WORKFLOW.md) - 每日/每周/每月的工作流程
 - [收件箱指南](00-inbox/README.md) - 如何快速记录和整理
 - [知识沉淀指南](10-knowledge/README.md) - 如何整理和沉淀知识
+- [脚本说明](scripts/README.md) - 脚本功能和使用方法
 
 ## 🔄 授权
 

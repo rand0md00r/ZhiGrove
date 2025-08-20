@@ -29,6 +29,9 @@ def create_quick_note(content, note_type="idea", title=None):
     elif note_type == "experiment":
         dir_path = f"40-experiments/exp-{date}-{title}"
         filename = "log.md"
+    elif note_type == "report":
+        dir_path = f"50-reports/weekly/{year}"
+        filename = f"week-{datetime.now().strftime('%V')}.md"
     else:
         dir_path = f"00-inbox"
         filename = f"{date}-{title}.md"
@@ -128,6 +131,33 @@ summary: {content[:100] if len(content) > 100 else content}
 ## 📝 下一步
 - [ ] 
 """
+    elif note_type == "report":
+        template = f"""---
+title: {title}
+date: {date}
+tags: []
+status: draft
+summary: {content[:100] if len(content) > 100 else content}
+---
+
+## 📊 本周总结
+{content}
+
+## 🎯 主要成果
+- 
+
+## 📝 遇到的问题
+- 
+
+## 🔍 解决方案
+- 
+
+## 📋 下周计划
+- [ ] 
+
+## 💡 思考与反思
+- 
+"""
     else:
         template = f"""# {title}
 
@@ -150,7 +180,7 @@ summary: {content[:100] if len(content) > 100 else content}
 def main():
     parser = argparse.ArgumentParser(description="快速创建笔记")
     parser.add_argument("content", help="笔记内容")
-    parser.add_argument("-t", "--type", choices=["idea", "paper", "experiment", "inbox"], 
+    parser.add_argument("-t", "--type", choices=["idea", "paper", "experiment", "report", "inbox"], 
                        default="idea", help="笔记类型")
     parser.add_argument("--title", help="笔记标题")
     

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 快速启动脚本 - 常用操作的快捷方式
+# 快速启动脚本 - 统一入口，消除重复功能
 
 echo "🚀 ZhiGrove 快速启动"
 echo "=================="
@@ -54,6 +54,15 @@ case "$1" in
     python scripts/quick_note.py "$2" -t experiment
     ;;
     
+  "report"|"r")
+    if [ -z "$2" ]; then
+      echo "📊 快速创建报告..."
+      echo "用法: $0 report '报告标题'"
+      exit 1
+    fi
+    python scripts/quick_note.py "$2" -t report
+    ;;
+    
   "inbox"|"in")
     if [ -z "$2" ]; then
       echo "📥 快速记录到收件箱..."
@@ -71,12 +80,16 @@ case "$1" in
   "help"|"h"|"")
     echo "📚 可用命令："
     echo ""
-    echo "  status, s     - 检查知识库状态"
-    echo "  note, n       - 快速记录（通用）"
+    echo "📝 创建内容："
     echo "  idea, i       - 快速记录想法"
     echo "  paper, p      - 快速创建论文笔记"
     echo "  experiment, exp - 快速创建实验记录"
+    echo "  report, r     - 快速创建报告"
     echo "  inbox, in     - 快速记录到收件箱"
+    echo "  note, n       - 通用快速记录"
+    echo ""
+    echo "🔧 工具操作："
+    echo "  status, s     - 检查知识库状态"
     echo "  update, u     - 更新索引"
     echo "  help, h       - 显示帮助"
     echo ""
@@ -84,6 +97,11 @@ case "$1" in
     echo "  $0 idea '我的新想法'"
     echo "  $0 paper '论文标题'"
     echo "  $0 status"
+    echo ""
+    echo "📖 更多信息："
+    echo "  - 工作流指南: WORKFLOW.md"
+    echo "  - 收件箱指南: 00-inbox/README.md"
+    echo "  - 知识沉淀指南: 10-knowledge/README.md"
     ;;
     
   *)
