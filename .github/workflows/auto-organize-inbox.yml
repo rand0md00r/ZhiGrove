@@ -22,107 +22,84 @@ jobs:
         with:
           python-version: '3.9'
       
-      - name: Auto Organize Inbox
+      - name: Get current week
+        id: week_info
         run: |
-          echo "Starting auto-organize inbox..."
-          
-          # 获取当前日期和周次信息
-          current_date=$(date '+%Y-%m-%d')
-          current_year=$(date '+%Y')
-          current_week=$(date '+%V')  # ISO周次
-          
-          echo "Current date: $current_date"
+          current_week=$(date '+%V')
+          echo "week_number=$current_week" >> $GITHUB_OUTPUT
           echo "Current week: $current_week"
-          
-          # 创建周目录（如果不存在）
-          week_dir="00-inbox/week-${current_week:0:2}"
+      
+      - name: Create week directory
+        run: |
+          week_dir="00-inbox/week-${{ steps.week_info.outputs.week_number }}"
           mkdir -p "$week_dir"
-          echo "Week directory: $week_dir"
+          echo "Created directory: $week_dir"
+      
+      - name: List inbox files
+        run: |
+          echo "Files in inbox directory:"
+          ls -la 00-inbox/
+      
+      - name: Process files with Python
+        run: |
+          python -c "
+          import os
+          import shutil
+          import datetime
+          from pathlib import Path
           
-          # 查找收件箱中的文件
-          inbox_dir="00-inbox"
-          if [ ! -d "$inbox_dir" ]; then
-            echo "Error: Inbox directory does not exist"
-            exit 1
-          fi
+          # Get current week
+          current_week = datetime.datetime.now().isocalendar()[1]
+          week_dir = f'00-inbox/week-{current_week:02d}'
           
-          # 处理收件箱中的文件
-          processed_count=0
-          for file in "$inbox_dir"/*.md; do
-            if [ -f "$file" ]; then
-              filename=$(basename "$file")
-              echo "Processing file: $filename"
-              
-              # 跳过README.md和周次目录
-              if [ "$filename" = "README.md" ] || [[ "$filename" =~ ^week-[0-9]+$ ]]; then
-                echo "  Skipping README.md and week directories"
-                continue
-              fi
-              
-              # 跳过已经在周次目录中的文件
-              if [[ "$filename" =~ ^\[[0-9]{6}-[0-9]{4}\].*\.md$ ]]; then
-                echo "  Skipping already organized file: $filename"
-                continue
-              fi
-              
-              # 获取文件创建时间
-              create_time=""
-              if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS
-                create_time=$(stat -f "%SB" "$file" | date -f "%b %d %H:%M:%S %Y %z" "+%y%m%d-%H%M" 2>/dev/null || echo "")
-              else
-                # Linux/Windows
-                create_time=$(stat -c "%y" "$file" | cut -d' ' -f1,2 | date -d "$(cat)" "+%y%m%d-%H%M" 2>/dev/null || echo "")
-              fi
-              
-              # 如果无法获取创建时间，使用当前时间
-              if [ -z "$create_time" ]; then
-                create_time=$(date '+%y%m%d-%H%M')
-                echo "  Warning: Cannot get creation time, using current time: $create_time"
-              fi
-              
-              # 提取主题（去掉.md扩展名）
-              topic=$(echo "$filename" | sed 's/\.md$//')
-              
-              # 生成新文件名
-              new_filename="[${create_time}]${topic}.md"
-              new_filepath="$week_dir/$new_filename"
-              
-              echo "  Original filename: $filename"
-              echo "  Topic: $topic"
-              echo "  Time: $create_time"
-              echo "  New filename: $new_filename"
-              
-              # 移动文件到周目录
-              if mv "$file" "$new_filepath" 2>/dev/null; then
-                echo "  Success: File moved to $new_filepath"
-                ((processed_count++))
-              else
-                echo "  Error: File move failed for $filename"
-                # 继续处理其他文件，不退出
-              fi
-              
-              echo ""
-            fi
-          done
+          print(f'Processing files for week {current_week}')
+          print(f'Target directory: {week_dir}')
           
-          echo "Organization complete:"
-          echo "  - Files processed: $processed_count"
-          echo "  - Target directory: $week_dir"
+          # Process files
+          inbox_dir = '00-inbox'
+          processed_count = 0
           
-          # 检查是否有变更
-          if [ $processed_count -gt 0 ]; then
-            echo "Changes detected, preparing to commit..."
-          else
-            echo "No files need organization"
-          fi
+          for file_path in Path(inbox_dir).glob('*.md'):
+              if file_path.name == 'README.md':
+                  print(f'Skipping README.md')
+                  continue
+                  
+              if file_path.name.startswith('week-'):
+                  print(f'Skipping week directory: {file_path.name}')
+                  continue
+                  
+              if file_path.name.startswith('[') and '].' in file_path.name:
+                  print(f'Skipping already organized file: {file_path.name}')
+                  continue
+              
+              # Get creation time
+              try:
+                  stat = file_path.stat()
+                  create_time = datetime.datetime.fromtimestamp(stat.st_ctime).strftime('%y%m%d-%H%M')
+              except:
+                  create_time = datetime.datetime.now().strftime('%y%m%d-%H%M')
+              
+              # Generate new filename
+              topic = file_path.stem
+              new_filename = f'[{create_time}]{topic}.md'
+              new_filepath = Path(week_dir) / new_filename
+              
+              print(f'Processing: {file_path.name} -> {new_filename}')
+              
+              # Move file
+              try:
+                  shutil.move(str(file_path), str(new_filepath))
+                  print(f'Success: Moved to {new_filepath}')
+                  processed_count += 1
+              except Exception as e:
+                  print(f'Error moving {file_path.name}: {e}')
           
-          echo "Auto-organize step completed successfully"
+          print(f'Total files processed: {processed_count}')
+          "
       
       - name: Check for changes
         id: check_changes
         run: |
-          echo "Checking for changes..."
           if [ -n "$(git status --porcelain)" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
             echo "Changes detected"
@@ -130,18 +107,16 @@ jobs:
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "No changes to commit"
           fi
-          echo "Change check completed"
       
       - name: Commit and push changes
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
-          echo "Committing organization results..."
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Auto-organize inbox: move files to week-$current_week [skip ci]"
+          git commit -m "Auto-organize inbox: move files to week-${{ steps.week_info.outputs.week_number }} [skip ci]"
           git push
-          echo "Organization results pushed"
+          echo "Changes committed and pushed"
       
       - name: No changes message
         if: steps.check_changes.outputs.has_changes == 'false'
@@ -150,11 +125,6 @@ jobs:
       
       - name: Summary
         run: |
-          echo ""
           echo "Inbox auto-organization complete!"
-          echo "Date: $current_date"
-          echo "Week: $current_week"
-          echo "Directory: week-${current_week:0:2}"
-          echo "Files processed: $processed_count"
-          echo ""
-          echo "Files have been organized to $week_dir directory"
+          echo "Week: ${{ steps.week_info.outputs.week_number }}"
+          echo "Directory: 00-inbox/week-${{ steps.week_info.outputs.week_number }}"
