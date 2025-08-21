@@ -1,12 +1,15 @@
 name: Auto Organize Inbox
 
 on:
-  schedule: [{ cron: "0 6 * * *" }]  # 每天早上6点
+  schedule: [{ cron: "0 6 * * *" }]  # 每天早上6点（北京时间）
   workflow_dispatch: # 允许手动触发
 
 permissions:
   contents: write
   pull-requests: read
+
+env:
+  TZ: Asia/Shanghai
 
 jobs:
   organize-inbox:
@@ -22,12 +25,17 @@ jobs:
         with:
           python-version: '3.9'
       
-      - name: Get current week
+      - name: Get current week (Beijing time)
         id: week_info
         run: |
+          # 设置时区为北京时间
+          export TZ=Asia/Shanghai
           current_week=$(date '+%V')
+          current_date=$(date '+%Y-%m-%d %H:%M:%S')
           echo "week_number=$current_week" >> $GITHUB_OUTPUT
+          echo "current_date=$current_date" >> $GITHUB_OUTPUT
           echo "Current week: $current_week"
+          echo "Current date (Beijing): $current_date"
       
       - name: Create week directory
         run: |
@@ -48,12 +56,16 @@ jobs:
           import datetime
           from pathlib import Path
           
-          # Get current week
+          # Set timezone to Beijing time
+          os.environ['TZ'] = 'Asia/Shanghai'
+          
+          # Get current week (Beijing time)
           current_week = datetime.datetime.now().isocalendar()[1]
           week_dir = f'00-inbox/week-{current_week:02d}'
           
           print(f'Processing files for week {current_week}')
           print(f'Target directory: {week_dir}')
+          print(f'Current time (Beijing): {datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}')
           
           # Process files
           inbox_dir = '00-inbox'
@@ -72,27 +84,47 @@ jobs:
                   print(f'Skipping already organized file: {file_path.name}')
                   continue
               
-              # Get creation time
+              print(f'Processing: {file_path.name}')
+              
+              # Get file creation time (preferred) or modification time
               try:
                   stat = file_path.stat()
-                  create_time = datetime.datetime.fromtimestamp(stat.st_ctime).strftime('%y%m%d-%H%M')
-              except:
-                  create_time = datetime.datetime.now().strftime('%y%m%d-%H%M')
+                  # Try to get creation time, fallback to modification time
+                  if hasattr(stat, 'st_birthtime'):  # macOS
+                      create_time = stat.st_birthtime
+                  elif hasattr(stat, 'st_ctime'):   # Linux/Windows
+                      create_time = stat.st_ctime
+                  else:
+                      create_time = stat.st_mtime
+                  
+                  # Convert to Beijing time
+                  dt = datetime.datetime.fromtimestamp(create_time)
+                  # Format as YYMMDD-HHMM
+                  time_str = dt.strftime('%y%m%d-%H%M')
+                  print(f'  File creation time: {dt.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+                  print(f'  Formatted time: {time_str}')
+                  
+              except Exception as e:
+                  print(f'  Warning: Cannot get file time: {e}')
+                  # Use current time as fallback
+                  dt = datetime.datetime.now()
+                  time_str = dt.strftime('%y%m%d-%H%M')
+                  print(f'  Using current time: {time_str}')
               
               # Generate new filename
               topic = file_path.stem
-              new_filename = f'[{create_time}]{topic}.md'
+              new_filename = f'[{time_str}]{topic}.md'
               new_filepath = Path(week_dir) / new_filename
               
-              print(f'Processing: {file_path.name} -> {new_filename}')
+              print(f'  New filename: {new_filename}')
               
               # Move file
               try:
                   shutil.move(str(file_path), str(new_filepath))
-                  print(f'Success: Moved to {new_filepath}')
+                  print(f'  Success: Moved to {new_filepath}')
                   processed_count += 1
               except Exception as e:
-                  print(f'Error moving {file_path.name}: {e}')
+                  print(f'  Error moving {file_path.name}: {e}')
           
           print(f'Total files processed: {processed_count}')
           "
@@ -127,4 +159,5 @@ jobs:
         run: |
           echo "Inbox auto-organization complete!"
           echo "Week: ${{ steps.week_info.outputs.week_number }}"
+          echo "Date (Beijing): ${{ steps.week_info.outputs.current_date }}"
           echo "Directory: 00-inbox/week-${{ steps.week_info.outputs.week_number }}"

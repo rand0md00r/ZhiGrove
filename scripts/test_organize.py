@@ -9,31 +9,46 @@ import datetime
 from pathlib import Path
 
 def get_file_creation_time(file_path):
-    """获取文件创建时间"""
+    """获取文件创建时间（北京时间）"""
     try:
+        # 设置时区为北京时间
+        os.environ['TZ'] = 'Asia/Shanghai'
+        
         # 获取文件状态
         stat = os.stat(file_path)
-        # 使用创建时间（如果可用）或修改时间
-        create_time = stat.st_ctime if hasattr(stat, 'st_ctime') else stat.st_mtime
         
-        # 转换为datetime对象
+        # 尝试获取创建时间，回退到修改时间
+        if hasattr(stat, 'st_birthtime'):  # macOS
+            create_time = stat.st_birthtime
+        elif hasattr(stat, 'st_ctime'):   # Linux/Windows
+            create_time = stat.st_ctime
+        else:
+            create_time = stat.st_mtime
+        
+        # 转换为datetime对象（北京时间）
         dt = datetime.datetime.fromtimestamp(create_time)
         
         # 格式化为 YYMMDD-HHMM
         return dt.strftime('%y%m%d-%H%M')
+        
     except Exception as e:
         print(f"   ⚠️  无法获取文件时间: {e}")
+        # 使用当前北京时间作为回退
+        os.environ['TZ'] = 'Asia/Shanghai'
         return datetime.datetime.now().strftime('%y%m%d-%H%M')
 
 def organize_inbox_simulation():
     """模拟收件箱整理过程"""
     print("🔄 开始模拟收件箱自动整理...")
     
-    # 获取当前日期和周次信息
+    # 设置时区为北京时间
+    os.environ['TZ'] = 'Asia/Shanghai'
+    
+    # 获取当前日期和周次信息（北京时间）
     current_date = datetime.datetime.now()
     current_week = current_date.isocalendar()[1]
     
-    print(f"📅 当前日期: {current_date.strftime('%Y-%m-%d')}")
+    print(f"📅 当前日期（北京时间）: {current_date.strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📊 当前周次: {current_week}")
     
     # 创建周目录
@@ -66,7 +81,7 @@ def organize_inbox_simulation():
         
         print(f"📄 处理文件: {file_path.name}")
         
-        # 获取创建时间
+        # 获取创建时间（北京时间）
         create_time = get_file_creation_time(file_path)
         
         # 提取主题（去掉.md扩展名）
@@ -99,9 +114,12 @@ def organize_inbox_simulation():
         print("ℹ️  没有文件需要整理")
 
 def show_week_calculation():
-    """显示周次计算"""
-    print("📅 周次计算示例:")
-    print("=" * 40)
+    """显示周次计算（北京时间）"""
+    print("📅 周次计算示例（北京时间）:")
+    print("=" * 50)
+    
+    # 设置时区为北京时间
+    os.environ['TZ'] = 'Asia/Shanghai'
     
     # 计算几个示例日期
     test_dates = [
@@ -126,7 +144,12 @@ def show_week_calculation():
         except Exception as e:
             print(f"{date_str} -> 计算错误: {e}")
     
-    print("=" * 40)
+    print("=" * 50)
+    
+    # 显示当前时间信息
+    now = datetime.datetime.now()
+    print(f"🕐 当前时间（北京时间）: {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📅 当前周次: {now.isocalendar()[1]}")
 
 def main():
     print("🧪 收件箱自动整理功能测试")
@@ -140,12 +163,13 @@ def main():
     organize_inbox_simulation()
     
     print("\n🎯 功能说明:")
-    print("1. 每天早上6点自动运行")
+    print("1. 每天早上6点自动运行（北京时间）")
     print("2. 将收件箱中的临时md文件按周次整理")
-    print("3. 文件名格式: [YYMMDD-HHMM]topic.md")
+    print("3. 文件名格式: [YYMMDD-HHMM]topic.md（使用文件创建时间）")
     print("4. 目录结构: 00-inbox/week-XX/")
     print("5. 自动创建周目录（如果不存在）")
     print("6. 支持手动触发测试")
+    print("7. 使用北京时间作为基准时区")
 
 if __name__ == "__main__":
     main()
