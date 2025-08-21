@@ -1,7 +1,7 @@
 name: Auto Organize Inbox
 
 on:
-  schedule: [{ cron: "0 6 * * *" }]  # 每天早上6点（北京时间）
+  schedule: [{ cron: "30 23 * * *" }]  # 每天晚上23点30分（北京时间）
   workflow_dispatch: # 允许手动触发
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: '3.9'
       
-      - name: Get current week (Beijing time)
+      - name: Get current week (Beijing time - 23:30 daily)
         id: week_info
         run: |
           # 设置时区为北京时间
@@ -54,18 +54,86 @@ jobs:
           import os
           import shutil
           import datetime
+          import re
           from pathlib import Path
           
           # Set timezone to Beijing time
           os.environ['TZ'] = 'Asia/Shanghai'
           
-          # Get current week (Beijing time)
+          # Get current week (Beijing time - 23:30 daily)
           current_week = datetime.datetime.now().isocalendar()[1]
           week_dir = f'00-inbox/week-{current_week:02d}'
           
           print(f'Processing files for week {current_week}')
           print(f'Target directory: {week_dir}')
-          print(f'Current time (Beijing): {datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}')
+          print(f'Current time (Beijing - 23:30 daily): {datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}')
+          
+          def extract_time_from_content(file_path):
+              \"\"\"从文件内容中提取时间信息\"\"\"
+              try:
+                  with open(file_path, 'r', encoding='utf-8') as f:
+                      content = f.read()
+                  
+                  # 查找日期时间模式
+                  patterns = [
+                      r'date:\s*(\d{4}-\d{2}-\d{2})',  # YAML frontmatter
+                      r'创建时间[：:]\s*(\d{4}-\d{2}-\d{2})',  # 中文标记
+                      r'创建于[：:]\s*(\d{4}-\d{2}-\d{2})',  # 中文标记
+                      r'(\d{4}-\d{2}-\d{2})',  # 通用日期格式
+                  ]
+                  
+                  for pattern in patterns:
+                      match = re.search(pattern, content)
+                      if match:
+                          date_str = match.group(1)
+                          # 尝试解析日期
+                          try:
+                              dt = datetime.datetime.strptime(date_str, '%Y-%m-%d')
+                              # 使用当前时间的小时和分钟
+                              now = datetime.datetime.now()
+                              dt = dt.replace(hour=now.hour, minute=now.minute)
+                              return dt
+                          except ValueError:
+                              continue
+                  
+                  return None
+              except Exception as e:
+                  print(f'    Warning: Cannot read file content: {e}')
+                  return None
+          
+          def get_file_time(file_path):
+              \"\"\"获取文件时间，优先使用内容中的时间\"\"\"
+              # 1. 首先尝试从文件内容中提取时间
+              content_time = extract_time_from_content(file_path)
+              if content_time:
+                  print(f'    Using time from file content: {content_time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+                  return content_time
+              
+              # 2. 回退到文件系统时间
+              try:
+                  stat = file_path.stat()
+                  
+                  # 尝试获取创建时间
+                  if hasattr(stat, 'st_birthtime'):  # macOS
+                      create_time = stat.st_birthtime
+                      time_type = 'birth time'
+                  elif hasattr(stat, 'st_ctime'):   # Linux/Windows
+                      create_time = stat.st_ctime
+                      time_type = 'ctime (status change)'
+                  else:
+                      create_time = stat.st_mtime
+                      time_type = 'mtime (modification)'
+                  
+                  dt = datetime.datetime.fromtimestamp(create_time)
+                  print(f'    Using file system {time_type}: {dt.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+                  return dt
+                  
+              except Exception as e:
+                  print(f'    Warning: Cannot get file system time: {e}')
+                  # 3. 最后使用当前时间
+                  now = datetime.datetime.now()
+                  print(f'    Using current time as fallback: {now.strftime(\"%Y-%m-%d %H:%M:%S\")}')
+                  return now
           
           # Process files
           inbox_dir = '00-inbox'
@@ -86,30 +154,12 @@ jobs:
               
               print(f'Processing: {file_path.name}')
               
-              # Get file creation time (preferred) or modification time
-              try:
-                  stat = file_path.stat()
-                  # Try to get creation time, fallback to modification time
-                  if hasattr(stat, 'st_birthtime'):  # macOS
-                      create_time = stat.st_birthtime
-                  elif hasattr(stat, 'st_ctime'):   # Linux/Windows
-                      create_time = stat.st_ctime
-                  else:
-                      create_time = stat.st_mtime
-                  
-                  # Convert to Beijing time
-                  dt = datetime.datetime.fromtimestamp(create_time)
-                  # Format as YYMMDD-HHMM
-                  time_str = dt.strftime('%y%m%d-%H%M')
-                  print(f'  File creation time: {dt.strftime(\"%Y-%m-%d %H:%M:%S\")}')
-                  print(f'  Formatted time: {time_str}')
-                  
-              except Exception as e:
-                  print(f'  Warning: Cannot get file time: {e}')
-                  # Use current time as fallback
-                  dt = datetime.datetime.now()
-                  time_str = dt.strftime('%y%m%d-%H%M')
-                  print(f'  Using current time: {time_str}')
+              # Get file time using improved strategy
+              dt = get_file_time(file_path)
+              
+              # Format as YYMMDD-HHMM
+              time_str = dt.strftime('%y%m%d-%H%M')
+              print(f'  Formatted time: {time_str}')
               
               # Generate new filename
               topic = file_path.stem
@@ -159,5 +209,5 @@ jobs:
         run: |
           echo "Inbox auto-organization complete!"
           echo "Week: ${{ steps.week_info.outputs.week_number }}"
-          echo "Date (Beijing): ${{ steps.week_info.outputs.current_date }}"
+          echo "Date (Beijing - 23:30 daily): ${{ steps.week_info.outputs.current_date }}"
           echo "Directory: 00-inbox/week-${{ steps.week_info.outputs.week_number }}"
