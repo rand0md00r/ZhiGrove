@@ -142,6 +142,8 @@
             preds = self.fm_transformers(x, log_snr=log_snr, null_indicator=None)
             v = preds[-1] if isinstance(preds, (list, tuple)) else preds
 
+            print(f"step{k}: |x|={x.abs().mean():.4f}, |v|={v.abs().mean():.4f}, dt={float(dt[k]):.4f}")
+
             x = x + v * float(dt[k].item())            # 非均匀步长，更稳
 
         # ---- 4) 用 VAE 解码回像素，并规整到 [-1,1] ----
@@ -152,48 +154,3 @@
             images = F.interpolate(images, size=(height, width), mode='bilinear', align_corners=False)
 
         return images
-
-
-
-
-    def flow_matching_loss(self, z_text: torch.Tensor, x_img: torch.Tensor) -> torch.Tensor:
-        """
-        使用 encode_moments 得到目标分布 x1，构造路径 ψ(t,x0,x1)，
-        用 FMTransformers 预测速度，与目标速度 Dtψ 计算 MSE。
-        """
-        x_img_256 = F.interpolate(x_img, size=(256, 256), mode='bilinear', align_corners=False)     # TODO 实现多分辨率输入
-        x1 = self.autoencoder(                                                                      # VAE编码器使用的是autoencoder，解码也使用autoencoder
-            x_img_256.to(dtype=self._dtype, device=self.device), fn='encode_moments'
-        ).squeeze(0)
-        x1 = x1.to(dtype=self._dtype, device=self.device)
-
-        batch_size, channels, height, width = x1.shape
-
-        # 连续时间采样 + 路径
-        t = self.time_step_sampler.sample_time(x1)
-        log_snr = 4.0 - 8.0 * t  # 目前未直接使用，但保留给 fm_transformers
-        # x0 = z_text.reshape(x1.shape).to(dtype=self._dtype, device=self.device)
-        x0 = einops.rearrange(
-            z_text, 
-            'b (c h w) -> b c h w', 
-            c=channels, h=height, w=width
-        ).to(dtype=self._dtype, device=x1.device)       # NOTE: 修改维度变换方式
-
-        # NOTE: 修正null_indicator的错误配置，旧代码没有根据null_indicator更新x1
-        null_indicator = (torch.rand(batch_size, device=x1.device) < 0.1)
-        if null_indicator.any():
-            # x1_perm = x1.clone()
-            # x1_perm[null_indicator] = torch.roll(x1_perm[null_indicator], shifts=1, dims=0)
-            # x1_eff = x1_perm
-            perm_idx = torch.randperm(batch_size, device=x1.device)
-            x1_eff = x1.clone()
-            x1_eff[null_indicator] = x1[perm_idx[null_indicator]]
-        else:
-            x1_eff = x1
-
-        x_t = psi(t, x0, x1_eff, self.sigma_min, self.sigma_max).to(dtype=self._dtype)
-        v_target = Dt_psi(t, x0, x1_eff, self.sigma_min, self.sigma_max)
-
-        preds = self.fm_transformers(x_t, log_snr=log_snr, null_indicator=null_indicator)
-        loss = mse_mean_over_spatial(preds[-1] - v_target).mean()
-        return loss
