@@ -45,8 +45,8 @@
 ### 近期更新
 
 **论文**  
-- 2025-08-26 · [2025-08-20-](20-papers/2025/2025-08-20-.md)
 - 2025-08-26 · [2025-08-20-vtla-preference-learning](20-papers/2025/2025-08-20-vtla-preference-learning.md)
+- 2025-08-26 · [2025-08-20-](20-papers/2025/2025-08-20-.md)
 
 **闪念/会议**  
 - 2025-08-26 · [20250819-ideation-cfg-schedule](30-ideas/2025/20250819-ideation-cfg-schedule.md)
