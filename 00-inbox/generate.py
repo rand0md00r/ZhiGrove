@@ -117,3 +117,55 @@ class LogitNormalSampler(TimeStepSampler):
             device=x_start.device,
         )
         return torch.sigmoid(x_normal)
+
+
+def _build_logit_normal_schedule(
+    self, K: int, device, *, mean=0.0, std=1.0, deterministic: bool = True,
+    generator: torch.Generator = None, eps: float = 1e-6
+):
+    """
+    返回:
+      t_edges: (K+1,)  时间区间边界 (单调)
+      t_mid:   (K,)    每步的中点时间  (单调)
+      dt:      (K,)    每步步长 = t_edges[k+1]-t_edges[k] (>=0, 求和≈1)
+    """
+    normal = torch.distributions.Normal(
+        torch.tensor(mean, device=device), torch.tensor(std, device=device)
+    )
+    if deterministic:
+        qs = torch.linspace(0.0 + eps, 1.0 - eps, K + 1, device=device)
+        z_edges = normal.icdf(qs)                          # (K+1,)
+    else:
+        z_edges = torch.normal(mean=mean, std=std, size=(K+1,), device=device, generator=generator)
+        z_edges, _ = torch.sort(z_edges)
+
+    t_edges = torch.sigmoid(z_edges).clamp(eps, 1.0 - eps) # (K+1,)
+    t_mid   = 0.5 * (t_edges[:-1] + t_edges[1:])           # (K,)
+    dt      = (t_edges[1:] - t_edges[:-1])                 # (K,)
+    return t_edges, t_mid, dt
+
+
+
+# 取 sampler 配置，保持与训练一致
+m = getattr(self.time_step_sampler, "normal_mean", 0.0)
+s = getattr(self.time_step_sampler, "normal_std", 1.0)
+
+# 构造单调时间网格（推荐 deterministic=True；要随机可改 False 并传 generator）
+_, t_mid, dt = self._build_logit_normal_schedule(
+    K=num_steps, device=self.device, mean=m, std=s, deterministic=True, generator=generator
+)
+
+for k in range(num_steps):
+    # 训练同式: log_snr = 4 - 8 * t
+    val = 4.0 - 8.0 * float(t_mid[k].item())   # 标量
+    if use_cfg:                                 # 若你拼了 2B 做 CFG
+        log_snr = torch.full((2*B_cond,), val, device=self.device, dtype=torch.float32)  # 一维
+        preds = self.fm_transformers(x_cat, log_snr=log_snr, null_indicator=null_indicator)
+        v_all = preds[-1] if isinstance(preds, (list, tuple)) else preds
+        v = (1.0 + cfg_scale) * v_all[:B_cond] - cfg_scale * v_all[B_cond:]
+    else:
+        log_snr = torch.full((B_cond,), val, device=self.device, dtype=torch.float32)     # 一维
+        preds = self.fm_transformers(x, log_snr=log_snr, null_indicator=None)
+        v = preds[-1] if isinstance(preds, (list, tuple)) else preds
+
+    x = x + v * float(dt[k].item())            # 非均匀步长，更稳
