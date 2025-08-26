@@ -5,7 +5,7 @@
         attention_mask: torch.Tensor,
         progress_bar: bool = False,
         cfg_scale: float = 4.5,
-        num_steps: int = 20,
+        num_steps: int = 50,
         generator: torch.Generator = None,
         height: int = 512,
         width: int = 512,
@@ -43,7 +43,10 @@
             out = self.context_encoder(q_tokens.to(dtype), q_mask)
             mu, log_var = torch.chunk(out, 2, dim=-1)
             std = torch.exp(0.5 * log_var)
-            eps = torch.randn_like(std) if generator is None else torch.randn_like(std, generator=generator)
+            if generator is None:
+                eps = torch.randn_like(std)
+            else:
+                eps = torch.randn(std.shape, generator=generator, device=std.device, dtype=std.dtype)
             z  = eps * std + mu     # reparam
             if z.dim() == 3:
                 z = z.reshape(z.size(0), -1)     # [B, Z]
@@ -59,16 +62,23 @@
 
         # ---- 2) 用 VAE 确定 latent 形状，并把 z0 投到 [B,C,h,w] 初态 ----
         dummy_img = torch.zeros(B_cond, 3, height, width, device=device, dtype=dtype)
-        latent_shape = self.pixels_to_latents(dummy_img).shape          # [B, C, h, w]
+        # latent_shape = self.pixels_to_latents(dummy_img).shape          # [B, C, h, w]
+        latent_shape = self.autoencoder(                                                                      # VAE编码器使用的是autoencoder，解码也使用autoencoder
+            dummy_img.to(dtype=self._dtype, device=self.device), fn='encode_moments').squeeze(0).shape
         _, C, Hh, Ww = latent_shape
         target_dim = C * Hh * Ww
 
-        # 懒加载线性映射到 VAE latent 维度
-        if not hasattr(self, "_zproj_to_latent") or self._zproj_to_latent.out_features != target_dim:
-            in_dim = z0.shape[1]
-            self._zproj_to_latent = nn.Linear(in_dim, target_dim, bias=False).to(device=device, dtype=dtype)
+        # 加载线性映射到 VAE latent 维度
+        # if not hasattr(self, "_zproj_to_latent") or self._zproj_to_latent.out_features != target_dim:
+        #     in_dim = z0.shape[1]
+        #     self._zproj_to_latent = nn.Linear(in_dim, target_dim, bias=False).to(device=device, dtype=dtype)
 
-        x = self._zproj_to_latent(z0).reshape(B_cond, C, Hh, Ww).to(dtype=dtype)
+        # x = self._zproj_to_latent(z0).reshape(B_cond, C, Hh, Ww).to(dtype=dtype)
+        x = einops.rearrange(
+            z0, 
+            'b (c h w) -> b c h w', 
+            c=C, h=Hh, w=Ww
+        ).to(dtype=self._dtype, device=z0.device)       # NOTE: 修改维度变换方式
 
         # ---- 3) 用 FMTransFormers 的速度场做 Euler ODE 积分 ----
         t0, t1 = 0.0, 1.0
@@ -81,19 +91,62 @@
             except Exception:
                 pass
 
-        for _ in iters:
-            t = torch.full((B_cond, 1, 1, 1), fill_value=t0, device=device, dtype=dtype)
-            log_snr = (4.0 - 8.0 * t).to(dtype=torch.float32).squeeze(-1).squeeze(-1)
-            # 这里模型不显式接收文本条件；文本条件通过初态 x 已经注入
+        def _build_logit_normal_schedule(
+            K: int, device, *, mean=0.0, std=1.0, deterministic: bool = True,
+            generator: torch.Generator = None, eps: float = 1e-6
+        ):
+            """
+            返回:
+            t_edges: (K+1,)  时间区间边界 (单调)
+            t_mid:   (K,)    每步的中点时间  (单调)
+            dt:      (K,)    每步步长 = t_edges[k+1]-t_edges[k] (>=0, 求和≈1)
+            """
+            normal = torch.distributions.Normal(
+                torch.tensor(mean, device=device), torch.tensor(std, device=device)
+            )
+            if deterministic:
+                qs = torch.linspace(0.0 + eps, 1.0 - eps, K + 1, device=device)
+                z_edges = normal.icdf(qs)                          # (K+1,)
+            else:
+                z_edges = torch.normal(mean=mean, std=std, size=(K+1,), device=device, generator=generator)
+                z_edges, _ = torch.sort(z_edges)
+
+            t_edges = torch.sigmoid(z_edges).clamp(eps, 1.0 - eps) # (K+1,)
+            t_mid   = 0.5 * (t_edges[:-1] + t_edges[1:])           # (K,)
+            dt      = (t_edges[1:] - t_edges[:-1])                 # (K,)
+            return t_edges, t_mid, dt
+
+        # 取 sampler 配置，保持与训练一致
+        m = getattr(self.time_step_sampler, "normal_mean", 0.0)
+        s = getattr(self.time_step_sampler, "normal_std", 1.0)
+
+        # 构造单调时间网格（推荐 deterministic=True；要随机可改 False 并传 generator）
+        _, t_mid, dt = _build_logit_normal_schedule(
+            K=num_steps, device=self.device, mean=m, std=s, deterministic=True, generator=generator
+        )
+
+        for k in range(num_steps):
+            # 训练同式: log_snr = 4 - 8 * t
+            val = 4.0 - 8.0 * float(t_mid[k].item())   # 标量
+            # if use_cfg:                                 # 若你拼了 2B 做 CFG
+            #     log_snr = torch.full((2*B_cond,), val, device=self.device, dtype=torch.float32)  # 一维
+            #     preds = self.fm_transformers(x_cat, log_snr=log_snr, null_indicator=null_indicator)
+            #     v_all = preds[-1] if isinstance(preds, (list, tuple)) else preds
+            #     v = (1.0 + cfg_scale) * v_all[:B_cond] - cfg_scale * v_all[B_cond:]
+            # else:
+            #     log_snr = torch.full((B_cond,), val, device=self.device, dtype=torch.float32)     # 一维
+            #     preds = self.fm_transformers(x, log_snr=log_snr, null_indicator=None)
+            #     v = preds[-1] if isinstance(preds, (list, tuple)) else preds
+
+            log_snr = torch.full((B_cond,), val, device=self.device, dtype=self.dtype)     # 一维
             preds = self.fm_transformers(x, log_snr=log_snr, null_indicator=None)
             v = preds[-1] if isinstance(preds, (list, tuple)) else preds
-            x = (x + v * dt).to(dtype=dtype)
-            t0 += dt
 
-        latents = x  # [B_cond, C, Hh, Ww]
+            x = x + v * float(dt[k].item())            # 非均匀步长，更稳
 
         # ---- 4) 用 VAE 解码回像素，并规整到 [-1,1] ----
-        images = self.latents_to_pixels(latents)               # [B_cond, 3, H, W]（VAE内部已做尺度还原）
+        moments = self.autoencoder.sample(x)
+        images = self.autoencoder.decode(moments)
         images = images.clamp(-1, 1).to(dtype=dtype)
         if images.shape[-2:] != (height, width):
             images = F.interpolate(images, size=(height, width), mode='bilinear', align_corners=False)
@@ -102,70 +155,45 @@
 
 
 
-class LogitNormalSampler(TimeStepSampler):
-    """t = sigmoid(N(mean, std^2)) per https://arxiv.org/pdf/2403.03206.pdf ."""
-    def __init__(self, normal_mean: float = 0.0, normal_std: float = 1.0):
-        self.normal_mean = float(normal_mean)
-        self.normal_std = float(normal_std)
 
-    @torch.no_grad()
-    def sample_time(self, x_start: torch.Tensor) -> torch.Tensor:
-        x_normal = torch.normal(
-            mean=self.normal_mean,
-            std=self.normal_std,
-            size=(x_start.shape[0],),
-            device=x_start.device,
-        )
-        return torch.sigmoid(x_normal)
+    def flow_matching_loss(self, z_text: torch.Tensor, x_img: torch.Tensor) -> torch.Tensor:
+        """
+        使用 encode_moments 得到目标分布 x1，构造路径 ψ(t,x0,x1)，
+        用 FMTransformers 预测速度，与目标速度 Dtψ 计算 MSE。
+        """
+        x_img_256 = F.interpolate(x_img, size=(256, 256), mode='bilinear', align_corners=False)     # TODO 实现多分辨率输入
+        x1 = self.autoencoder(                                                                      # VAE编码器使用的是autoencoder，解码也使用autoencoder
+            x_img_256.to(dtype=self._dtype, device=self.device), fn='encode_moments'
+        ).squeeze(0)
+        x1 = x1.to(dtype=self._dtype, device=self.device)
 
+        batch_size, channels, height, width = x1.shape
 
-def _build_logit_normal_schedule(
-    self, K: int, device, *, mean=0.0, std=1.0, deterministic: bool = True,
-    generator: torch.Generator = None, eps: float = 1e-6
-):
-    """
-    返回:
-      t_edges: (K+1,)  时间区间边界 (单调)
-      t_mid:   (K,)    每步的中点时间  (单调)
-      dt:      (K,)    每步步长 = t_edges[k+1]-t_edges[k] (>=0, 求和≈1)
-    """
-    normal = torch.distributions.Normal(
-        torch.tensor(mean, device=device), torch.tensor(std, device=device)
-    )
-    if deterministic:
-        qs = torch.linspace(0.0 + eps, 1.0 - eps, K + 1, device=device)
-        z_edges = normal.icdf(qs)                          # (K+1,)
-    else:
-        z_edges = torch.normal(mean=mean, std=std, size=(K+1,), device=device, generator=generator)
-        z_edges, _ = torch.sort(z_edges)
+        # 连续时间采样 + 路径
+        t = self.time_step_sampler.sample_time(x1)
+        log_snr = 4.0 - 8.0 * t  # 目前未直接使用，但保留给 fm_transformers
+        # x0 = z_text.reshape(x1.shape).to(dtype=self._dtype, device=self.device)
+        x0 = einops.rearrange(
+            z_text, 
+            'b (c h w) -> b c h w', 
+            c=channels, h=height, w=width
+        ).to(dtype=self._dtype, device=x1.device)       # NOTE: 修改维度变换方式
 
-    t_edges = torch.sigmoid(z_edges).clamp(eps, 1.0 - eps) # (K+1,)
-    t_mid   = 0.5 * (t_edges[:-1] + t_edges[1:])           # (K,)
-    dt      = (t_edges[1:] - t_edges[:-1])                 # (K,)
-    return t_edges, t_mid, dt
+        # NOTE: 修正null_indicator的错误配置，旧代码没有根据null_indicator更新x1
+        null_indicator = (torch.rand(batch_size, device=x1.device) < 0.1)
+        if null_indicator.any():
+            # x1_perm = x1.clone()
+            # x1_perm[null_indicator] = torch.roll(x1_perm[null_indicator], shifts=1, dims=0)
+            # x1_eff = x1_perm
+            perm_idx = torch.randperm(batch_size, device=x1.device)
+            x1_eff = x1.clone()
+            x1_eff[null_indicator] = x1[perm_idx[null_indicator]]
+        else:
+            x1_eff = x1
 
+        x_t = psi(t, x0, x1_eff, self.sigma_min, self.sigma_max).to(dtype=self._dtype)
+        v_target = Dt_psi(t, x0, x1_eff, self.sigma_min, self.sigma_max)
 
-
-# 取 sampler 配置，保持与训练一致
-m = getattr(self.time_step_sampler, "normal_mean", 0.0)
-s = getattr(self.time_step_sampler, "normal_std", 1.0)
-
-# 构造单调时间网格（推荐 deterministic=True；要随机可改 False 并传 generator）
-_, t_mid, dt = self._build_logit_normal_schedule(
-    K=num_steps, device=self.device, mean=m, std=s, deterministic=True, generator=generator
-)
-
-for k in range(num_steps):
-    # 训练同式: log_snr = 4 - 8 * t
-    val = 4.0 - 8.0 * float(t_mid[k].item())   # 标量
-    if use_cfg:                                 # 若你拼了 2B 做 CFG
-        log_snr = torch.full((2*B_cond,), val, device=self.device, dtype=torch.float32)  # 一维
-        preds = self.fm_transformers(x_cat, log_snr=log_snr, null_indicator=null_indicator)
-        v_all = preds[-1] if isinstance(preds, (list, tuple)) else preds
-        v = (1.0 + cfg_scale) * v_all[:B_cond] - cfg_scale * v_all[B_cond:]
-    else:
-        log_snr = torch.full((B_cond,), val, device=self.device, dtype=torch.float32)     # 一维
-        preds = self.fm_transformers(x, log_snr=log_snr, null_indicator=None)
-        v = preds[-1] if isinstance(preds, (list, tuple)) else preds
-
-    x = x + v * float(dt[k].item())            # 非均匀步长，更稳
+        preds = self.fm_transformers(x_t, log_snr=log_snr, null_indicator=null_indicator)
+        loss = mse_mean_over_spatial(preds[-1] - v_target).mean()
+        return loss
