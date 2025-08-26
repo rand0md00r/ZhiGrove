@@ -99,3 +99,21 @@
             images = F.interpolate(images, size=(height, width), mode='bilinear', align_corners=False)
 
         return images
+
+
+
+class LogitNormalSampler(TimeStepSampler):
+    """t = sigmoid(N(mean, std^2)) per https://arxiv.org/pdf/2403.03206.pdf ."""
+    def __init__(self, normal_mean: float = 0.0, normal_std: float = 1.0):
+        self.normal_mean = float(normal_mean)
+        self.normal_std = float(normal_std)
+
+    @torch.no_grad()
+    def sample_time(self, x_start: torch.Tensor) -> torch.Tensor:
+        x_normal = torch.normal(
+            mean=self.normal_mean,
+            std=self.normal_std,
+            size=(x_start.shape[0],),
+            device=x_start.device,
+        )
+        return torch.sigmoid(x_normal)
