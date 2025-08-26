@@ -1,0 +1,84 @@
+print(f"step{k}: |x|={x.abs().mean():.4f}, |v|={v.abs().mean():.4f}, dt={float(dt[k]):.4f}")
+
+
+
+step0: |x|=6.1875, |v|=0.4531, dt=0.1532
+step1: |x|=6.1875, |v|=0.4531, dt=0.0555
+step2: |x|=6.1875, |v|=0.4531, dt=0.0446
+step3: |x|=6.1875, |v|=0.4531, dt=0.0394
+step4: |x|=6.1875, |v|=0.4531, dt=0.0363
+step5: |x|=6.1875, |v|=0.4531, dt=0.0343
+step6: |x|=6.1875, |v|=0.4531, dt=0.0330
+step7: |x|=6.1875, |v|=0.4531, dt=0.0322
+step8: |x|=6.1875, |v|=0.4531, dt=0.0316
+step9: |x|=6.1875, |v|=0.4531, dt=0.0314
+step10: |x|=6.1875, |v|=0.4531, dt=0.0314
+step11: |x|=6.1875, |v|=0.4531, dt=0.0316
+step12: |x|=6.1875, |v|=0.4531, dt=0.0322
+step13: |x|=6.1875, |v|=0.4531, dt=0.0330
+step14: |x|=6.1875, |v|=0.4531, dt=0.0343
+step15: |x|=6.1875, |v|=0.4531, dt=0.0363
+step16: |x|=6.1875, |v|=0.4531, dt=0.0394
+step17: |x|=6.1875, |v|=0.4531, dt=0.0446
+step18: |x|=6.2188, |v|=0.4531, dt=0.0555
+step19: |x|=6.2188, |v|=0.4531, dt=0.1532
+1it [00:12, 12.37s/it]/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+step0: |x|=6.2188, |v|=0.4531, dt=0.1532
+step1: |x|=6.2188, |v|=0.4531, dt=0.0555
+step2: |x|=6.2188, |v|=0.4531, dt=0.0446
+step3: |x|=6.2188, |v|=0.4531, dt=0.0394
+step4: |x|=6.2188, |v|=0.4531, dt=0.0363
+step5: |x|=6.2188, |v|=0.4531, dt=0.0343
+step6: |x|=6.2188, |v|=0.4531, dt=0.0330
+step7: |x|=6.2188, |v|=0.4531, dt=0.0322
+step8: |x|=6.2188, |v|=0.4531, dt=0.0316
+step9: |x|=6.2188, |v|=0.4531, dt=0.0314
+step10: |x|=6.2188, |v|=0.4531, dt=0.0314
+step11: |x|=6.2188, |v|=0.4531, dt=0.0316
+step12: |x|=6.2188, |v|=0.4531, dt=0.0322
+step13: |x|=6.2188, |v|=0.4531, dt=0.0330
+step14: |x|=6.2188, |v|=0.4531, dt=0.0343
+step15: |x|=6.2188, |v|=0.4531, dt=0.0363
+step16: |x|=6.2188, |v|=0.4531, dt=0.0394
+step17: |x|=6.2188, |v|=0.4531, dt=0.0446
+step18: |x|=6.2188, |v|=0.4531, dt=0.0555
+step19: |x|=6.2188, |v|=0.4531, dt=0.1532
+2it [00:18,  8.48s/it]/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([1024])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([67584])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/vepfs/group03/wyq/ug_uni/CrossUni-do/src/models/diffusion/sigmoid_kernel.py:30: UserWarning: Using slower tdp_torch implementation for a tensor with shape torch.Size([512])
+  warnings.warn(f'Using slower tdp_torch implementation for a tensor with shape {param0.shape}')
+/usr/local/lib/python3.10/site-packages/torch/_dynamo/eval_frame.py:745: UserWarning: torch.utils.checkpoint: the use_reentrant parameter should be passed explicitly. In version 2.5 we will raise an exception if use_reentrant is not passed. use_reentrant=False is recommended, but if you need to preserve the current default behavior, you can pass use_reentrant=True. Refer to docs for more details on the differences between the two variants.
+  return fn(*args, **kwargs)
+/usr/local/lib/python3.10/site-packages/torch/utils/checkpoint.py:87: UserWarning: None of the inputs have requires_grad=True. Gradients will be None
+  warnings.warn(
+step0: |x|=6.1875, |v|=0.4531, dt=0.1532
+step1: |x|=6.1875, |v|=0.4531, dt=0.0555
+step2: |x|=6.1875, |v|=0.4531, dt=0.0446
+step3: |x|=6.1875, |v|=0.4531, dt=0.0394
+step4: |x|=6.1875, |v|=0.4531, dt=0.0363
+step5: |x|=6.1875, |v|=0.4531, dt=0.0343
+step6: |x|=6.1875, |v|=0.4531, dt=0.0330
+step7: |x|=6.1875, |v|=0.4531, dt=0.0322
+step8: |x|=6.1875, |v|=0.4531, dt=0.0316
+step9: |x|=6.1875, |v|=0.4531, dt=0.0314
+step10: |x|=6.1875, |v|=0.4531, dt=0.0314
+step11: |x|=6.1875, |v|=0.4531, dt=0.0316
+step12: |x|=6.1875, |v|=0.4531, dt=0.0322
+step13: |x|=6.2188, |v|=0.4531, dt=0.0330
+step14: |x|=6.2188, |v|=0.4531, dt=0.0343
+step15: |x|=6.2188, |v|=0.4531, dt=0.0363
+step16: |x|=6.2188, |v|=0.4531, dt=0.0394
+step17: |x|=6.2188, |v|=0.4531, dt=0.0446
+step18: |x|=6.2188, |v|=0.4531, dt=0.0555
+step19: |x|=6.2188, |v|=0.4531, dt=0.1532
