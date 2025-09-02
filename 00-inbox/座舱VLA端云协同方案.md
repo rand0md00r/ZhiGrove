@@ -8,7 +8,7 @@
 ---
 
 ## 0. 系统框图（云端主流程，按 T0 / T1 分支）
-<img width="3438" height="1792" alt="image" src="https://github.com/user-attachments/assets/1989468b-6974-41ba-a45b-98fdadea44b2" />
+<img width="800" height="417" alt="image" src="微信图片_20250902190851_4_51.png" />
 
 
 ---
