@@ -8,42 +8,8 @@
 ---
 
 ## 0. 系统框图（云端主流程，按 T0 / T1 分支）
+<img width="3438" height="1792" alt="image" src="https://github.com/user-attachments/assets/1989468b-6974-41ba-a45b-98fdadea44b2" />
 
-```text
-[Edge Inputs]
- image / audio(ASR) / dialog / vehicle signals / user profile / history
- (vision.caption 必填；vision.latent 可选但推荐)
-        │
-        ▼
-[Context Builder]
- - 时间对齐 / 轻量事件抽取 / 去敏与压缩
- - 统一表示：Observation JSON（caption+signals+profile+history[+latent]）
-        │
-        ├─────────────────────────────── T0：快速落地（自回归） ────────────────────────────────┐
-        ▼                                                                                       │
-[Frozen VLM / Omni]  —— 函数调用 / JSON Schema  →  Top-K OptionCards(JSON)                      │
- - 直接理解与规划                                                                               │
-        │                                                                                       │
-        └──→ [规则与执行绑定] → 前端呈现（用户点击） → 执行 / 撤销（undo_plan 可选） ←──────────┘
-        │
-        └────────────────────────────── T1：最优路线（两阶段） ────────────────────────────────┐
-                                                   │                                            │
-                                [Frozen VLM / Omni（Teacher）]                                  │
-                                - 任务/约束解析，产：场景表征 + 行动草案（y_draft）               │
-                                                   │                                            │
-                                         [Connector（可学习中间层，MetaQuery 等）]               │
-                                         - 多源特征 → 生成条件（h*）                            │
-                                                   │                                            │
-                             [离散高速生成（Seed / MeanFlow / D2F 等，4–8步非自回归）]           │
-                                - 产：动作 DSL 序列（action_plan）                               │
-                                                   │                                            │
-                                      [规则与执行绑定] → OptionCards → 前端呈现（点击）           │
-                                                   │                                            │
-                                  （解释由小型 LLM 异步/并行补齐，不阻塞动作落地）                │
-                                                   ▼
-                                         [日志与偏好学习]
-                       曝光/点击/拒绝/撤销 → 清洗与脱敏 → RLAIF/DPO/排序模型 → 周期蒸馏
-```
 
 ---
 
