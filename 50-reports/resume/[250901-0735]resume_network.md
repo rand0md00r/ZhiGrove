@@ -39,14 +39,14 @@ ___
     - ② **RAG 优化**：语料 **Query-first** 重写+字段加权；双阶段召回/重排+权限校验；Recall@5/Top-1↑；BGE→Qwen 迁移。
     - ③ **数据/评测**：**多智能体**生成**多轮/模糊**数据与**困难/对抗样本**；
 * **结果（量产）**：内部回归 **复杂指令准确率 ≥ 98%**；重排Top-5**准确率99.8%**；完成 **领克 900** 线上量产并稳定运行。
-* **论文（在审）**：[AutoControl-Bench: A Multi-Agent Knowledge Distillation Framework for Complex Vehicle Function Call Understanding（NeurIPS 2026）](https://openreview.net/forum?id=lqdE0W6mFx#discussion)  [AutoBench-Data](https://github.com/HangerAmber/AutoBench-Data)
+* **论文（在审）**：[（NeurIPS 2026）AutoControl-Bench: A Multi-Agent Knowledge Distillation Framework for Complex Vehicle Function Call Understanding](https://openreview.net/forum?id=lqdE0W6mFx#discussion)  [AutoBench-Data](https://github.com/HangerAmber/AutoBench-Data)
 
 ---
 
 
 ### 教育背景
-* **东南大学** · 仪器科学与工程学院 · 电子信息（时序信息理解与生成） · 工学硕士（2021–2024）
-* **嘉兴学院** · 机电工程学院 · 电气工程及其自动化（优秀毕业生） · 工学学士（2017–2021）
+* **东南大学** · 仪器科学与工程学院 · 电子信息（时序信息理解与生成）    · 工学硕士（2021–2024）
+* **嘉兴学院** · 机电工程学院      · 电气工程及其自动化（优秀毕业生）   · 工学学士（2016–2020）
 
 ### 奖项（在校期间）
 * 全国研究生数学建模竞赛 **全国二等奖**（第一位次）
