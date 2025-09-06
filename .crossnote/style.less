@@ -1,8 +1,90 @@
+/* A4 一页简历（Markdown Preview Enhanced） */
+:root { --scale: 0.94; } /* 0.92~0.97 之间微调，直到刚好一页 */
 
-/* Please visit the URL below for more information: */
-/*   https://shd101wyy.github.io/markdown-preview-enhanced/#/customize-css */
+@page {
+  size: A4;
+  margin: 10mm 12mm;
+  /* 若引擎支持 margin boxes，可去页眉脚；Chrome 多数忽略 */
+  @top-left { content: none; } @top-center { content: none; } @top-right { content: none; }
+  @bottom-left { content: none; } @bottom-center { content: none; } @bottom-right { content: none; }
+}
 
-.markdown-preview.markdown-preview {
-  // modify your style here
-  // eg: background-color: blue;
+.markdown-preview.markdown-preview{
+  /* 为了配合缩放后仍占满 A4 宽度，这里用 “宽度=210mm/scale” */
+  width: calc(210mm / var(--scale));
+  margin: 0 auto;
+  color:#222;
+  font-size:10pt;           /* 适度变小 */
+  line-height:1.35;         /* 更紧凑 */
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC","Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  word-break: break-word;   /* 防止长链接撑行 */
+}
+
+/* 标题紧凑化 */
+.markdown-preview.markdown-preview h1{ margin:2pt 0 4pt; font-size:16pt; font-weight:700; letter-spacing:.2px; }
+.markdown-preview.markdown-preview h2{ margin:10pt 0 4pt; font-size:13pt; font-weight:700; }
+.markdown-preview.markdown-preview h3{ margin:8pt 0 3pt; font-size:11pt; font-weight:700; }
+.markdown-preview.markdown-preview h4,
+.markdown-preview.markdown-preview h5,
+.markdown-preview.markdown-preview h6{ margin:6pt 0 2pt; font-size:10pt; font-weight:600; }
+
+/* 标题行右侧时间对齐（通用 .title-line，h3/h4 皆可） */
+.markdown-preview.markdown-preview h3.title-line,
+.markdown-preview.markdown-preview h4.title-line,
+.markdown-preview.markdown-preview .title-line{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  gap:6pt;
+}
+.markdown-preview.markdown-preview .title-line .time{
+  white-space:nowrap;
+  font-weight:600;
+}
+
+/* 段落与列表更紧凑 */
+.markdown-preview.markdown-preview p{ margin:0 0 2pt; }
+.markdown-preview.markdown-preview ul,
+.markdown-preview.markdown-preview ol{ margin:0 0 4pt 12pt; padding:0; }
+.markdown-preview.markdown-preview li{ margin:0 0 1.5pt; break-inside:avoid; page-break-inside:avoid; }
+
+/* 分隔线更细、更省空间 */
+.markdown-preview.markdown-preview hr{ border:0; border-top:.8pt solid #000; margin:4pt 0 6pt; }
+
+/* 表格更紧凑（若用） */
+.markdown-preview.markdown-preview table{ width:100%; border-collapse:collapse; margin:2pt 0 4pt; font-size:9.5pt; }
+.markdown-preview.markdown-preview th,
+.markdown-preview.markdown-preview td{ border:.5pt solid #ccc; padding:2pt 4pt; vertical-align:top; }
+.markdown-preview.markdown-preview th{ background:#f5f5f5; font-weight:600; }
+
+/* 代码块与引用尽量收窄（简历里一般少用） */
+.markdown-preview.markdown-preview pre{ background:#fafafa; border:.5pt solid #e5e5e5; padding:4pt 6pt; border-radius:2pt; margin:4pt 0; font-size:9pt; }
+.markdown-preview.markdown-preview code{ font-size:9pt; }
+.markdown-preview.markdown-preview blockquote{ margin:3pt 0 4pt; padding:3pt 6pt; color:#444; border-left:2pt solid #999; background:#fafafa; }
+
+/* 链接样式（打印保留可读蓝色） */
+.markdown-preview.markdown-preview a{ color:#0366d6; text-decoration:underline; }
+.markdown-preview.markdown-preview a:hover{ color:#034ea2; }
+.markdown-preview.markdown-preview a:visited{ color:#5a32a3; }
+.markdown-preview.markdown-preview a::after{ content:""; }
+
+/* 页面内不裂项 */
+.markdown-preview.markdown-preview h1,
+.markdown-preview.markdown-preview h2,
+.markdown-preview.markdown-preview h3,
+.markdown-preview.markdown-preview h4{ break-after:avoid; page-break-after:avoid; }
+.markdown-preview.markdown-preview table,
+.markdown-preview.markdown-preview pre,
+.markdown-preview.markdown-preview blockquote,
+.markdown-preview.markdown-preview ul,
+.markdown-preview.markdown-preview ol{ break-inside:avoid; page-break-inside:avoid; }
+
+/* 打印时整体缩放，压到单页 */
+@media print{
+  html,body{ background:#fff; }
+  .markdown-preview.markdown-preview{
+    box-shadow:none;
+    transform: scale(var(--scale));
+    transform-origin: top left;
+  }
 }
