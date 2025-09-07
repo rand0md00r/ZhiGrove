@@ -1,15 +1,22 @@
 name: Auto Organize Inbox
 
 on:
-  schedule: [{ cron: "30 23 * * *" }]  # 每天晚上23点30分（北京时间）
-  workflow_dispatch: # 允许手动触发
+  schedule:
+    # GitHub Actions 使用 UTC。北京时间(UTC+8) 00:00 == UTC 16:00 当天
+    - cron: "0 16 * * *"
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: read
 
+# 仅影响步骤里的本地时间显示，不影响触发时区
 env:
   TZ: Asia/Shanghai
+
+concurrency:
+  group: auto-organize-inbox
+  cancel-in-progress: false
 
 jobs:
   organize-inbox:
@@ -19,195 +26,157 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
-      
-      - name: Get current week (Beijing time - 23:30 daily)
+
+      - name: Debug times (UTC vs Asia/Shanghai)
+        run: |
+          echo "UTC now:     $(date -u '+%Y-%m-%d %H:%M:%S %Z')"
+          echo "Beijing now: $(TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S %Z')"
+
+      - name: Get current week (Beijing local midnight)
         id: week_info
         run: |
-          # 设置时区为北京时间
           export TZ=Asia/Shanghai
           current_week=$(date '+%V')
           current_date=$(date '+%Y-%m-%d %H:%M:%S')
           echo "week_number=$current_week" >> $GITHUB_OUTPUT
           echo "current_date=$current_date" >> $GITHUB_OUTPUT
-          echo "Current week: $current_week"
-          echo "Current date (Beijing): $current_date"
-      
+          echo "Week: $current_week | Beijing date: $current_date"
+
       - name: Create week directory
         run: |
           week_dir="00-inbox/week-${{ steps.week_info.outputs.week_number }}"
           mkdir -p "$week_dir"
           echo "Created directory: $week_dir"
-      
+
       - name: List inbox files
         run: |
           echo "Files in inbox directory:"
-          ls -la 00-inbox/
-      
-      - name: Process files with Python
+          ls -la 00-inbox/ || true
+
+      - name: Process files with Python (Asia/Shanghai)
+        env:
+          WEEK_NUMBER: ${{ steps.week_info.outputs.week_number }}
         run: |
-          python -c "
-          import os
-          import shutil
-          import datetime
-          import re
+          python - <<'PY'
+          import os, shutil, re
           from pathlib import Path
-          
-          # Set timezone to Beijing time
-          os.environ['TZ'] = 'Asia/Shanghai'
-          
-          # Get current week (Beijing time - 23:30 daily)
-          current_week = datetime.datetime.now().isocalendar()[1]
-          week_dir = f'00-inbox/week-{current_week:02d}'
-          
-          print(f'Processing files for week {current_week}')
-          print(f'Target directory: {week_dir}')
-          print(f'Current time (Beijing - 23:30 daily): {datetime.datetime.now().strftime(\"%Y-%m-%d %H:%M:%S\")}')
-          
-          def extract_time_from_content(file_path):
-              \"\"\"从文件内容中提取时间信息\"\"\"
+          from datetime import datetime
+          try:
+              # Python 3.9+ 时区支持
+              from zoneinfo import ZoneInfo  # PEP 615
+              CN = ZoneInfo("Asia/Shanghai")
+          except Exception:
+              CN = None
+
+          def now_cn():
+              if CN is not None:
+                  return datetime.now(CN)
+              # 兜底：尊重环境变量 TZ=Asia/Shanghai（不如 zoneinfo 稳妥）
+              return datetime.now()
+
+          # 统一使用上一步算出来的周号，确保跨日无不一致
+          wk = os.getenv("WEEK_NUMBER")
+          current_week = int(wk) if wk else now_cn().isocalendar()[1]
+          week_dir = Path(f"00-inbox/week-{current_week:02d}")
+          week_dir.mkdir(parents=True, exist_ok=True)
+
+          print(f"Processing files for ISO week {current_week}")
+          print("Current Beijing time:", now_cn().strftime("%Y-%m-%d %H:%M:%S %z"))
+
+          def extract_time_from_content(p: Path):
               try:
-                  with open(file_path, 'r', encoding='utf-8') as f:
-                      content = f.read()
-                  
-                  # 查找日期时间模式
-                  patterns = [
-                      r'date:\s*(\d{4}-\d{2}-\d{2})',  # YAML frontmatter
-                      r'创建时间[：:]\s*(\d{4}-\d{2}-\d{2})',  # 中文标记
-                      r'创建于[：:]\s*(\d{4}-\d{2}-\d{2})',  # 中文标记
-                      r'(\d{4}-\d{2}-\d{2})',  # 通用日期格式
-                  ]
-                  
-                  for pattern in patterns:
-                      match = re.search(pattern, content)
-                      if match:
-                          date_str = match.group(1)
-                          # 尝试解析日期
-                          try:
-                              dt = datetime.datetime.strptime(date_str, '%Y-%m-%d')
-                              # 使用当前时间的小时和分钟
-                              now = datetime.datetime.now()
-                              dt = dt.replace(hour=now.hour, minute=now.minute)
-                              return dt
-                          except ValueError:
-                              continue
-                  
+                  txt = p.read_text(encoding="utf-8", errors="ignore")
+              except Exception as e:
+                  print(f"    Warning: read fail: {e}")
                   return None
-              except Exception as e:
-                  print(f'    Warning: Cannot read file content: {e}')
-                  return None
-          
-          def get_file_time(file_path):
-              \"\"\"获取文件时间，优先使用内容中的时间\"\"\"
-              # 1. 首先尝试从文件内容中提取时间
-              content_time = extract_time_from_content(file_path)
-              if content_time:
-                  print(f'    Using time from file content: {content_time.strftime(\"%Y-%m-%d %H:%M:%S\")}')
-                  return content_time
-              
-              # 2. 回退到文件系统时间
+              patterns = [
+                  r'date:\s*(\d{4}-\d{2}-\d{2})',        # YAML
+                  r'创建时间[：:]\s*(\d{4}-\d{2}-\d{2})',
+                  r'创建于[：:]\s*(\d{4}-\d{2}-\d{2})',
+                  r'(\d{4}-\d{2}-\d{2})',
+              ]
+              for pat in patterns:
+                  m = re.search(pat, txt)
+                  if m:
+                      d = m.group(1)
+                      try:
+                          base = datetime.strptime(d, "%Y-%m-%d")
+                          n = now_cn()
+                          # 用当天触发时的时分，避免无时分信息时全为 00:00
+                          dt = base.replace(hour=n.hour, minute=n.minute)
+                          return dt if CN is None else dt.replace(tzinfo=CN)
+                      except ValueError:
+                          pass
+              return None
+
+          def pick_time(p: Path):
+              t = extract_time_from_content(p)
+              if t:
+                  print("    Using content date:", t)
+                  return t
               try:
-                  stat = file_path.stat()
-                  
-                  # 尝试获取创建时间
-                  if hasattr(stat, 'st_birthtime'):  # macOS
-                      create_time = stat.st_birthtime
-                      time_type = 'birth time'
-                  elif hasattr(stat, 'st_ctime'):   # Linux/Windows
-                      create_time = stat.st_ctime
-                      time_type = 'ctime (status change)'
-                  else:
-                      create_time = stat.st_mtime
-                      time_type = 'mtime (modification)'
-                  
-                  dt = datetime.datetime.fromtimestamp(create_time)
-                  print(f'    Using file system {time_type}: {dt.strftime(\"%Y-%m-%d %H:%M:%S\")}')
-                  return dt
-                  
+                  stat = p.stat()
+                  # 以修改时间为兜底，更可移植
+                  t = datetime.fromtimestamp(stat.st_mtime)
+                  if CN is not None:
+                      t = t.astimezone(CN)
+                  print("    Using file mtime:", t)
+                  return t
               except Exception as e:
-                  print(f'    Warning: Cannot get file system time: {e}')
-                  # 3. 最后使用当前时间
-                  now = datetime.datetime.now()
-                  print(f'    Using current time as fallback: {now.strftime(\"%Y-%m-%d %H:%M:%S\")}')
-                  return now
-          
-          # Process files
-          inbox_dir = '00-inbox'
-          processed_count = 0
-          
-          for file_path in Path(inbox_dir).glob('*.md'):
-              if file_path.name == 'README.md':
-                  print(f'Skipping README.md')
-                  continue
-                  
-              if file_path.name.startswith('week-'):
-                  print(f'Skipping week directory: {file_path.name}')
-                  continue
-                  
-              if file_path.name.startswith('[') and '].' in file_path.name:
-                  print(f'Skipping already organized file: {file_path.name}')
-                  continue
-              
-              print(f'Processing: {file_path.name}')
-              
-              # Get file time using improved strategy
-              dt = get_file_time(file_path)
-              
-              # Format as YYMMDD-HHMM
-              time_str = dt.strftime('%y%m%d-%H%M')
-              print(f'  Formatted time: {time_str}')
-              
-              # Generate new filename
-              topic = file_path.stem
-              new_filename = f'[{time_str}]{topic}.md'
-              new_filepath = Path(week_dir) / new_filename
-              
-              print(f'  New filename: {new_filename}')
-              
-              # Move file
+                  n = now_cn()
+                  print("    Fallback to now:", n, "| err:", e)
+                  return n
+
+          processed = 0
+          for fp in Path("00-inbox").glob("*.md"):
+              if fp.name in {"README.md"}: 
+                  print("Skip:", fp.name); continue
+              if fp.name.startswith("week-"): 
+                  print("Skip week file:", fp.name); continue
+              if fp.name.startswith("[") and "]." in fp.name:
+                  print("Skip organized:", fp.name); continue
+
+              print("Processing:", fp.name)
+              dt = pick_time(fp)
+              time_str = dt.strftime("%y%m%d-%H%M")
+              new_name = f"[{time_str}]{fp.stem}.md"
+              dest = week_dir / new_name
               try:
-                  shutil.move(str(file_path), str(new_filepath))
-                  print(f'  Success: Moved to {new_filepath}')
-                  processed_count += 1
+                  shutil.move(str(fp), dest)
+                  print("  Moved ->", dest)
+                  processed += 1
               except Exception as e:
-                  print(f'  Error moving {file_path.name}: {e}')
-          
-          print(f'Total files processed: {processed_count}')
-          "
-      
+                  print("  Move error:", e)
+
+          print("Total files processed:", processed)
+          PY
+
       - name: Check for changes
         id: check_changes
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            echo "Changes detected"
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
-            echo "No changes to commit"
           fi
-      
+
       - name: Commit and push changes
         if: steps.check_changes.outputs.has_changes == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add .
-          git commit -m "Auto-organize inbox: move files to week-${{ steps.week_info.outputs.week_number }} [skip ci]"
+          git commit -m "Auto-organize inbox: week-${{ steps.week_info.outputs.week_number }} [skip ci]"
           git push
-          echo "Changes committed and pushed"
-      
-      - name: No changes message
-        if: steps.check_changes.outputs.has_changes == 'false'
-        run: |
-          echo "No changes to commit"
-      
+
       - name: Summary
         run: |
           echo "Inbox auto-organization complete!"
           echo "Week: ${{ steps.week_info.outputs.week_number }}"
-          echo "Date (Beijing - 23:30 daily): ${{ steps.week_info.outputs.current_date }}"
+          echo "Beijing date (at run): ${{ steps.week_info.outputs.current_date }}"
           echo "Directory: 00-inbox/week-${{ steps.week_info.outputs.week_number }}"
