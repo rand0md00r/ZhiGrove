@@ -1,3 +1,4 @@
+<span id="resume-mode"></span>
 # 王亚齐｜多模态大模型算法工程师
 **手机** 183-0517-2953  ·  **邮箱** [yqwang\_2008@163.com](mailto:yqwang_2008@163.com) 
 ---
