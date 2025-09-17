@@ -1,11 +1,11 @@
 <span id="resume-mode"></span>
-# 王亚齐｜多模态大模型算法工程师
+# 王亚齐｜机器人操作算法开发方向
 **手机** 183-0517-2953  ·  **邮箱** [yqwang\_2008@163.com](mailto:yqwang_2008@163.com) 
 ---
 
 ### Highlights
 
-* **统一多模态生成架构**：提出“**模态Query → 稀疏 TransEncoder → VAE 潜空间**”并用 **Noise-Free Flow Matching** 训练；A100×128 规模稳定收敛，内部 **mFID↓ / CLIPScore↑ / 编辑一致性↑**；论文筹备（CVPR 2026）。
+* **统一动作序列跨模态生成架构**：提出“**模态Query → 稀疏 TransEncoder → VAE 潜空间**”并用 **Noise-Free Flow Matching** 训练；A100×128 规模稳定收敛，内部 **mFID↓ / CLIPScore↑ / 编辑一致性↑**；论文筹备（CVPR 2026）。
 * **复杂车控量产落地**：RAG + 双阶段检索 + JSON Schema 约束，多轮澄清/拒识/越权防护；**领克 900 上线**，复杂指令**准确率 ≥98%**，**Top-5 重排 99.8%**。
 * **数据与工程闭环**：多智能体**合成多轮/模糊语料**与困难/对抗集；**vLLM 服务化、灰度回滚、可观测性**完善。
 
@@ -20,15 +20,14 @@
 
 ___
 
-<h4 class="title-line"><strong>（研究项目）通用跨模态生成架构</strong> <span class="time"> 2025.3–至今 </span></h4>
+<h4 class="title-line"><strong>（算法研究）动作序列跨模态生成架构</strong> <span class="time"> 2025.3–至今 </span></h4>
 
-- **目标**：实现一种可扩展的通用跨模态信息融合生成架构，对文本/图像(/音频等模态)实现最优特征传输与Noise-Free Flow Matching生成。
+- **目标**：实现一种可扩展的动作序列跨模态信息融合生成架构，对文本/图像(/音频等模态)实现最优特征传输与Noise-Free Flow Matching的动作生成。
 * **负责工作**：提出**模态Query** + **稀疏TransEncoder** + **跨模态监督**，**完成A100 * 128集群训练**；
     - ① 设计 **模态Query** 对各自模态进行cross-attn，**ShareQuery**聚合共享特征避免特征重排导致的槽位歧义；
     - ② 通过 **精简的MoE TransEncoder** 将特征压缩映射到VAE潜空间，施加**KL 约束**确保分布可迁移；
     - ③ **VICReg监督** 稳定了z_init <--> z_end语义结构，防止z_init方差坍缩；
-* **结果**：系列Bench**超越SOTA**，内部基准 mFID↓、CLIPScore↑、编辑一致性↑；同算力下参数成本更低。
-* **论文计划**：**第一作者（第一贡献人）**；拟投 **CVPR 2026**。
+* **结果**：系列Bench**超越SOTA**，基准 mFID↓、CLIPScore↑、编辑一致性↑；同算力下参数成本更低。
 
 ---
 
