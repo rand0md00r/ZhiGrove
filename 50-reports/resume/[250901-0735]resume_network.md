@@ -5,7 +5,7 @@
 
 ### Highlights
 
-* **统一动作序列跨模态生成架构**：提出“**模态Query → 稀疏 TransEncoder → VAE 潜空间**”并用 **Noise-Free Flow Matching** 训练；A100×128 规模稳定收敛，内部 **mFID↓ / CLIPScore↑ / 编辑一致性↑**；论文筹备（CVPR 2026）。
+* **统一动作序列跨模态生成架构**：提出“**模态Query → 稀疏 TransEncoder → VAE 潜空间**”并用 **Noise-Free Flow Matching** 训练，大规模训练稳定收敛。
 * **复杂车控量产落地**：RAG + 双阶段检索 + JSON Schema 约束，多轮澄清/拒识/越权防护；**领克 900 上线**，复杂指令**准确率 ≥98%**，**Top-5 重排 99.8%**。
 * **数据与工程闭环**：多智能体**合成多轮/模糊语料**与困难/对抗集；**vLLM 服务化、灰度回滚、可观测性**完善。
 
