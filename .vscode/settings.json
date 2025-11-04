@@ -1,5 +1,5 @@
 {
-    "pasteImage.path": "${currentFileDir}/assets",
-    "pasteImage.prefix": "./assets"
+    "pasteImage.path": "/Users/wangyaqi/Documents/ZhiGrove/assets",
+    // "pasteImage.prefix": "./assets"
   }
   
