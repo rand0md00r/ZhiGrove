@@ -1,65 +1,14 @@
 site_name: ZhiGrove
-site_description: Personal knowledge garden
-site_url: https://<yourname>.github.io
-repo_url: https://github.com/<yourname>/ZhiGrove
-copyright: © {year} <yourname>
 theme:
   name: material
   language: zh
   features:
-    - navigation.instant
-    - navigation.tracking
     - navigation.sections
-    - navigation.expand
-    - toc.integrate
-    - search.suggest
-    - search.share
-    - content.code.copy
-  palette:
-    - scheme: default
-    - scheme: slate
-markdown_extensions:
-  - admonition
-  - pymdownx.details
-  - pymdownx.superfences
-  - pymdownx.tasklist
-  - pymdownx.emoji
-  - toc:
-      permalink: true
-
-# 关键：把 docs_dir 设为仓库根，不用搬文件
-docs_dir: .
-
+    - navigation.tracking
+    # - navigation.indexes    # 让每个目录的 index.md 作为该目录的落地页
+    # - toc.integrate
 plugins:
   - search
-  - awesome-pages
-  - git-revision-date-localized:
-      type: timeago
-  - glightbox
-  - minify
-  - rss:
-      match_path: "(10-knowledge|20-papers|30-ideas|40-experiments|50-reports)/.*"
-  - exclude:
-      glob:
-        - ".git/*"
-        - ".github/*"
-        - ".vscode/*"
-        - "scripts/*"
-        - "templates/*"
-        - "assets/*/*.psd"
-        - "README.md"          # 可发布也可排除，按需
-        - "GITHUB_ACTIONS_GUIDE.md"
-        - ".DS_Store"
-      regex:
-        - ".*\\.ipynb_checkpoints/.*"
-
-# 首页：将仓库里的 README.md 当主页（可改为你想要的路径）
-nav:
-  - 首页: README.md
-  - Inbox: 00-inbox/
-  - 知识库: 10-knowledge/
-  - 论文: 20-papers/
-  - 想法: 30-ideas/
-  - 实验: 40-experiments/
-  - 报告: 50-reports/
-  - 资源: assets/
+docs_dir: docs
+markdown_extensions:
+  - meta

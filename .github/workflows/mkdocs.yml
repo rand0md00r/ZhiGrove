@@ -9,10 +9,6 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,7 +16,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install -r requirements.txt
+
+      # ① 准备 docs 树（把需要发布的目录复制进去）
+      - name: Prepare docs/ tree
+        run: |
+          set -eux
+          rm -rf docs && mkdir -p docs
+          # 首页
+          cp README.md docs/index.md
+          # 要发布的目录（按你的实际目录改；--delete 保持一一对应）
+          for d in 00-inbox 10-knowledge 20-papers 30-ideas 40-experiments 50-reports assets; do
+            rsync -a --delete "$d"/ "docs/$d"/
+          done
+
+      - run: pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple/
       - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         with: { path: "site" }
