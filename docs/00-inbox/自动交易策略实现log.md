@@ -6,248 +6,6 @@
 4. 检查委托列表，判断是否成功挂单；
 5. 检查买入列表，判断是否成功买入；
 
-``` python 
-#coding:gbk
-from datetime import datetime
-import math
-import pymongo
-from pymongo import MongoClient
-import time
-
-# ===================== 1. 核心配置 =====================
-# MongoDB配置
-MONGO_URI = "mongodb://dyx:qx_dyx@192.168.1.142:27017/?authSource=stock"
-DB_NAME = "stock"
-COLLECTION_NAME = "ths_realtime_stocks"
-DATA_FILTER = {"phase": "竞价", "indicator_name": "千竞一号"}  # 按需修改策略名称
-
-# 交易配置
-TRADE_ACCOUNT = "904800028165"  # 你的实盘账号
-PRICE_MULTIPLE = 1.02          # 1.02倍溢价
-MIN_PRICE_STEP = 0.01          # 向下取整到0.01元
-SYNC_DELAY = 3                 # 数据同步等待时间（秒）
-
-# 全局状态
-IS_TRADED = False              # 当天是否已下单
-
-# ===================== 2. MongoDB工具函数 =====================
-def get_today_stock_basket():
-    """从MongoDB读取今日股票篮子"""
-    try:
-        print(f"\n【MongoDB查询】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        client = MongoClient(MONGO_URI, connectTimeoutMS=30000, serverSelectionTimeoutMS=5000)
-        client.admin.command("ping")  # 验证连接
-        
-        db = client[DB_NAME]
-        coll = db[COLLECTION_NAME]
-        today = datetime.now().strftime("%Y-%m-%d")
-        query = {"date": today, **DATA_FILTER}
-        doc = coll.find_one(query, sort=[("update_time", -1)])  # 取最新数据
-        client.close()
-        
-        if not doc:
-            print(f"ℹ️ 未找到今日股票篮子，{SYNC_DELAY}秒后重试")
-            return []
-        
-        stock_codes = doc.get("filter_code_list", [])
-        if not isinstance(stock_codes, list) or len(stock_codes) == 0:
-            print(f"❌ 股票篮子为空")
-            return []
-        
-        # print(f"✅ 获取今日股票篮子：{stock_codes}（共{len(stock_codes)}只）")
-        return stock_codes
-    except Exception as e:
-        print(f"❌ MongoDB查询异常：{str(e)}")
-        time.sleep(SYNC_DELAY)
-        return []
-
-# ===================== 3. 市场工具函数 =====================
-def get_market_code(stock_code):
-    """获取市场代码（字符串类型，适配旧版API）"""
-    if stock_code.endswith(".SH") or stock_code.startswith("60"):
-        return "1", "上海市场"
-    elif stock_code.endswith(".SZ") or stock_code.startswith(("00", "30")):
-        return "2", "深圳市场"
-    else:
-        print(f"⚠️ 未知市场：{stock_code}，默认上海市场（'1'）")
-        return "1", "默认上海市场"
-
-def get_auction_price(ContextInfo, stock_code):
-    """获取集合竞价最终价格"""
-    try:
-        # print(f"\n【竞价价查询】股票：{stock_code}")
-        data = ContextInfo.get_market_data(
-            fields=["open"],
-            stock_code=[stock_code],
-            period="1d",
-            dividend_type="front",
-            count=1
-        )
-        if isinstance(data, dict):
-            price = data[stock_code]["open"]
-        elif hasattr(data, "iloc"):
-            price = data["open"].iloc[-1]
-        else:
-            price = float(data)
-        
-        if price <= 0 or math.isnan(price):
-            # print(f"❌ 竞价价异常：{price}元")
-            return 0
-        
-        # print(f"✅ 集合竞价最终价：{price:.2f}元")
-        return price
-    except Exception as e:
-        print(f"❌ 竞价价查询异常：{str(e)}")
-        return 0
-
-def get_available():
-    acct_info = get_trade_detail_data(TRADE_ACCOUNT, 'stock', 'account')
-    for i in acct_info:
-        print(i.m_dAvailable) 
-
-
-# ===================== 4. 挂单与状态检查函数 =====================
-def place_order(ContextInfo, stock_code, buy_price, lots):
-    """执行挂单操作"""
-    try:
-        passorder(23, 1101, 'test', stock_code, 11, buy_price, lots, ContextInfo)
-        print(f"🎉 挂单请求发送成功：{stock_code} | 价格{buy_price}元 | {lots}手")
-        return True
-    except Exception as e:
-        print(f"❌ 挂单失败：{str(e)}")
-        return False
-
-def check_order_status(stock_code, expected_price, expected_lots):
-    """检查委托状态"""
-    try:
-        # 查询委托列表
-        order_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "order")
-        if not isinstance(order_data, list) or len(order_data) == 0:
-            print(f"⚠️ 未查询到委托记录")
-            return False
-        
-        # 筛选目标委托
-        for order in order_data:
-            if (order.m_strOrderCode == stock_code and 
-                math.isclose(order.m_dModelPrice, expected_price) and 
-                order.m_nVolume == expected_lots and
-                order.m_nOrderStatus in (50, 51)):  # 未成交/部分成交状态
-                print(f"✅ 委托状态正常：{stock_code} | 价格{order.m_dModelPrice} | 状态{order.m_nOrderStatus}")
-                return True
-        print(f"⚠️ 未找到目标委托或委托已成交/撤单")
-        return False
-    except Exception as e:
-        print(f"❌ 委托状态查询异常：{str(e)}")
-        return False
-
-def check_position_status(stock_code, expected_lots):
-    """检查持仓状态"""
-    try:
-        # 查询持仓列表
-        position_data = get_trade_detail_data(
-            TRADE_ACCOUNT,  # 账号
-            "STOCK",        # 账号类型
-            "POSITION"      # 数据类型
-        )
-        if not isinstance(position_data, list) or len(position_data) == 0:
-            print(f"⚠️ 未查询到持仓记录")
-            return False
-        
-        # 筛选目标持仓
-        for pos in position_data:
-            if pos.m_strStockCode == stock_code and pos.m_nVolume >= expected_lots:
-                print(f"✅ 买入成功：{stock_code} | 持仓{pos.m_nVolume}股 | 成本{pos.m_dCostPrice}元")
-                return True
-        print(f"⚠️ 未找到目标持仓或持仓数量不足")
-        return False
-    except Exception as e:
-        print(f"❌ 持仓状态查询异常：{str(e)}")
-        return False
-
-
-# ===================== 5. QMT策略核心函数 =====================
-def init(ContextInfo):
-	"""策略初始化"""
-	global IS_TRADED
-	IS_TRADED = False
-
-	ContextInfo.accID = TRADE_ACCOUNT
-	ContextInfo.set_account(TRADE_ACCOUNT)
-
-    # 获得股票篮子数据
-	stock_codes = get_today_stock_basket()
-
-	for stock in stock_codes:
-		# 获取竞价价格
-		auction_price = get_auction_price(ContextInfo, stock)
-        print(f"竞价价格： {auction_price}")
-
-        # 买入价格，买入手数
-		buy_price = auction_price
-		lots = 1
-		
-
-        # 1. 挂单
-        passorder(23, 1101, TRADE_ACCOUNT, stock, 11, buy_price, lots,'千竞策略', 2, "msg", ContextInfo)
-        # passorder(23, 1101, TRADE_ACCOUNT ,stock,5,-1,lots,'千竞策略', 2, "msg", ContextInfo)
-        print("发送挂单")
-
-        time.sleep(SYNC_DELAY)  # 等待3秒
-
-        # 2. 查询账户
-        acct_info = get_trade_detail_data(TRADE_ACCOUNT, 'stock', 'account')
-        if not isinstance(acct_info, list) or len(acct_info) == 0:
-            print(f"⚠️ 未查询到资金信息")
-        for i in acct_info:
-            print(i.m_dAvailable)
-
-        # 3. 查询委托
-        order_data = get_trade_detail_data(TRADE_ACCOUNT, 'stock', 'order')
-        if not isinstance(order_data, list) or len(order_data) == 0:
-            print(f"⚠️ 未查询到委托记录")
-
-        # 4. 查询仓位
-        position_info = get_trade_detail_data(TRADE_ACCOUNT, 'stock', 'position')
-        if not isinstance(position_info, list) or len(position_info) == 0:
-            print(f"⚠️ 未查询到仓位")
-
-        IS_TRADED = True  # 标记为已交易
-
-
-def handlebar(ContextInfo):
-	pass
-	
-
-
-
-
-
-def stop(ContextInfo):
-    """策略停止"""
-    print("\n" + "="*80)
-    print(f"【策略停止】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"今日交易状态：{'已完成' if IS_TRADED else '未执行'}")
-    print("="*80)
-```
-
-
-``` bash
-
-【2025-11-11 16:38:52.101】  
-【MongoDB查询】时间：2025-11-11 16:38:52
-
-【2025-11-11 16:38:52.151】  竞价价格： 33.61
-发送挂单
-
-【2025-11-11 16:38:55.135】  [quote]start simulation mode
-【2025-11-11 16:38:55.151】  等待3秒...
-10000.0
-?? 未查询到委托记录
-?? 未查询到仓位
-
-```
-
-
 
 #########################################################################################################################
 
@@ -278,51 +36,56 @@ MAX_TRADE_STOCKS = 5           # 最大买入股票数量（防止资金分散�
 IS_TRADED = False              # 当天是否已执行交易
 
 # ===================== 2. MongoDB工具函数 =====================
-def get_today_stock_basket():
-    """从MongoDB读取今日股票篮子（去重+限制数量）"""
-    try:
-        print(f"\n【MongoDB查询】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        # 连接MongoDB（设置超时）
-        client = MongoClient(
-            MONGO_URI,
-            connectTimeoutMS=30000,
-            serverSelectionTimeoutMS=5000,
-            socketTimeoutMS=10000
-        )
-        client.admin.command("ping")  # 验证连接
-        
-        # 查询今日最新股票篮子
-        db = client[DB_NAME]
-        coll = db[COLLECTION_NAME]
-        today = datetime.now().strftime("%Y-%m-%d")
-        query = {"date": today, **DATA_FILTER}
-        # 按更新时间降序，取最新一条
-        doc = coll.find_one(query, sort=[("update_time", -1)])
-        client.close()
-        
-        if not doc:
-            print(f"ℹ️ 未找到今日股票篮子（{today}），请检查MongoDB数据")
-            return []
-        
-        # 提取股票代码（去重+限制数量）
-        stock_codes = doc.get("filter_code_list", [])
-        if not isinstance(stock_codes, list):
-            stock_codes = []
-        
-        # 去重（避免重复买入）
-        stock_codes = list(set(stock_codes))
-        # 限制最大买入数量
-        if len(stock_codes) > MAX_TRADE_STOCKS:
-            stock_codes = stock_codes[:MAX_TRADE_STOCKS]
-            print(f"⚠️ 股票数量超过{MAX_TRADE_STOCKS}只，仅买入前{MAX_TRADE_STOCKS}只")
-        
-        print(f"✅ 获取今日股票篮子：{stock_codes}（共{len(stock_codes)}只）")
-        return stock_codes
+import time
+
+def get_today_stock_basket(max_retries=18, retry_interval=10):
+    """从MongoDB读取今日股票篮子（带重试机制）"""
+    today = datetime.now().strftime("%Y-%m-%d")
     
-    except Exception as e:
-        print(f"❌ MongoDB查询异常：{str(e)}")
-        time.sleep(SYNC_DELAY)
-        return []
+    for retry in range(max_retries):
+        try:
+            print(f"\n【MongoDB查询】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}（重试{retry+1}/{max_retries}）")
+            client = MongoClient(
+                MONGO_URI,
+                connectTimeoutMS=30000,
+                serverSelectionTimeoutMS=5000,
+                socketTimeoutMS=10000
+            )
+            client.admin.command("ping")
+            
+            db = client[DB_NAME]
+            coll = db[COLLECTION_NAME]
+            query = {**DATA_FILTER, "date": today}
+            
+            doc = coll.find_one(query, sort=[("update_time", -1)])
+            client.close()
+            
+            # 校验文档有效性
+            if doc and doc.get("date") == today:
+                # 后续逻辑不变
+                stock_codes = doc.get("filter_code_list", [])
+                if not isinstance(stock_codes, list):
+                    stock_codes = []
+                
+                stock_codes = list(set(stock_codes))
+                if len(stock_codes) > MAX_TRADE_STOCKS:
+                    stock_codes = stock_codes[:MAX_TRADE_STOCKS]
+                    print(f" 股票数量超过{MAX_TRADE_STOCKS}只，仅买入前{MAX_TRADE_STOCKS}只")
+                
+                print(f" 获取今日股票篮子：{stock_codes}（共{len(stock_codes)}只）")
+                return stock_codes
+            
+            else:
+                print(f"警告：未找到今日（{today}）有效股票篮子，{retry_interval}秒后重试")
+                time.sleep(retry_interval)
+        
+        except Exception as e:
+            print(f"获取股票篮子失败：{str(e)}，{retry_interval}秒后重试")
+            time.sleep(retry_interval)
+    
+    # 所有重试失败后返回空列表
+    print(f"所有重试失败，未找到今日股票篮子")
+    return []
 
 # ===================== 3. 市场与价格工具函数 =====================
 def get_market_code(stock_code):
@@ -332,7 +95,7 @@ def get_market_code(stock_code):
     elif stock_code.endswith(".SZ") or stock_code.startswith(("00", "30")):
         return 2, "深圳市场"
     else:
-        print(f"⚠️ 未知市场：{stock_code}，默认上海市场（1）")
+        print(f" 未知市场：{stock_code}，默认上海市场（1）")
         return 1, "默认上海市场"
 
 def get_auction_price(ContextInfo, stock_code):
@@ -340,33 +103,44 @@ def get_auction_price(ContextInfo, stock_code):
     try:
         print(f"\n【竞价价查询】股票：{stock_code}")
         # 旧版QMT获取竞价数据（字段用"open"，集合竞价时段返回竞价价）
-        data = ContextInfo.get_market_data(
-            fields=["open"],
-            stock_code=[stock_code],
-            period="1d",
-            dividend_type="front",
-            count=1
-        )
+        # data = ContextInfo.get_market_data(
+        #     fields=["open"],
+        #     stock_code=[stock_code],
+        #     period="1d",
+        #     dividend_type="front",
+        #     count=1
+        # )
+
+        full_tick = ContextInfo.get_full_tick([stock_code])
         
-        # 解析数据（兼容不同返回格式）
-        auction_price = 0.0
-        if isinstance(data, dict) and stock_code in data:
-            auction_price = data[stock_code]["open"]
-        elif hasattr(data, "iloc") and not data.empty:
-            auction_price = data["open"].iloc[-1]
-        elif isinstance(data, list) and len(data) > 0:
-            auction_price = data[0]
-        
+        # # 解析数据（兼容不同返回格式）
+        # auction_price = 0.0
+        # if isinstance(data, dict) and stock_code in data:
+        #     auction_price = data[stock_code]["open"]
+        # elif hasattr(data, "iloc") and not data.empty:
+        #     auction_price = data["open"].iloc[-1]
+        # elif isinstance(data, list) and len(data) > 0:
+        #     auction_price = data[0]
+
+        last_price = full_tick[stock_code]["lastPrice"]
+        open_price = tick_data[stock_code]['open']  # 集合竞价最终开盘价
+        volume = tick_data[stock_code]['volume']    # 集合竞价成交量
+        amount = tick_data[stock_code]['amount']    # 集合竞价成交额
+
+        print(f"集合竞价数据-{stock_code}：开盘价={open_price}, 最新价={last_price} 成交量={volume}, 成交额={amount}")
+
+        auction_price = open_price
+
         # 价格校验
         if auction_price <= 0 or math.isnan(auction_price):
-            print(f"❌ 竞价价异常：{auction_price}元（可能非竞价时段）")
+            print(f"? 竞价价异常：{auction_price}元（可能非竞价时段）")
             return 0.0
         
-        print(f"✅ 集合竞价价格：{auction_price:.2f}元")
+        print(f"? 集合竞价价格：{auction_price:.2f}元")
         return auction_price
     
     except Exception as e:
-        print(f"❌ 竞价价查询异常：{str(e)}")
+        print(f"? 竞价价查询异常：{str(e)}")
         return 0.0
 
 def calculate_buy_params(ContextInfo, stock_codes):
@@ -378,7 +152,7 @@ def calculate_buy_params(ContextInfo, stock_codes):
         acct_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "account")
 
         if not isinstance(acct_data, list) or len(acct_data) == 0:
-            print(f"❌ 未查询到账户资金信息")
+            print(f"? 未查询到账户资金信息")
             return []
         
         # 提取可用资金（旧版字段：m_dAvailable）
@@ -389,10 +163,10 @@ def calculate_buy_params(ContextInfo, stock_codes):
                 break
         
         if available_cash <= 100:  # 最低交易门槛
-            print(f"❌ 可用资金不足：{available_cash:.2f}元")
+            print(f"? 可用资金不足：{available_cash:.2f}元")
             return []
         
-        print(f"✅ 可用资金：{available_cash:.2f}元")
+        print(f"? 可用资金：{available_cash:.2f}元")
         
         # 2. 计算单只股票可用资金（均分+预留手续费）
         stock_count = len(stock_codes)
@@ -402,7 +176,7 @@ def calculate_buy_params(ContextInfo, stock_codes):
         # 预留千分之3手续费，实际可用资金=总资金×(1-手续费率)/股票数量
         commission_rate = 0.003
         single_stock_cash = available_cash * (1 - commission_rate) / stock_count
-        print(f"✅ 单只股票可用资金：{single_stock_cash:.2f}元（含手续费预留）")
+        print(f"? 单只股票可用资金：{single_stock_cash:.2f}元（含手续费预留）")
         
         # 3. 逐股计算买入价格和手数
         for stock in stock_codes:
@@ -415,15 +189,15 @@ def calculate_buy_params(ContextInfo, stock_codes):
             buy_price = math.floor(auction_price * PRICE_MULTIPLE * 100) / 100
             # 防止买入价低于跌停价（简单校验）
             if buy_price <= auction_price * 0.9:
-                print(f"⚠️ 买入价异常（低于跌停价）：{buy_price:.2f}元，跳过该股票")
+                print(f" 买入价异常（低于跌停价）：{buy_price:.2f}元，跳过该股票")
                 continue
             
-            # 计算最大买入手数（1手=100股，向下取整）
+            # 计算最大买入股数
             max_shares = single_stock_cash / buy_price
-            max_lots = int(max_shares // 100) * 100  # 手数=股数//100
+            max_lots = int(max_shares // 100) * 100
             
-            if max_lots < 1:
-                print(f"⚠️ 资金不足买入1手：{stock}（需{buy_price*100:.2f}元，可用{single_stock_cash:.2f}元）")
+            if max_lots < 100:
+                print(f" 资金不足买入1手：{stock}（需{buy_price*100:.2f}元，可用{single_stock_cash:.2f}元）")
                 continue
             
             # 记录买入参数
@@ -435,12 +209,12 @@ def calculate_buy_params(ContextInfo, stock_codes):
                 "market_code": market_code
             })
             
-            print(f"✅ 买入参数：{stock} | 价格{buy_price:.2f}元 | {max_lots}手（{max_lots*100}股）")
+            print(f"? 买入参数：{stock} | 价格{buy_price:.2f}元 | {max_lots}手（{max_lots*100}股）")
         
         return buy_params
     
     except Exception as e:
-        print(f"❌ 计算买入参数异常：{str(e)}")
+        print(f"? 计算买入参数异常：{str(e)}")
         return []
 
 # ===================== 4. 挂单与状态检查函数 =====================
@@ -451,25 +225,14 @@ def place_order(ContextInfo, stock_code, buy_price, lots, market_code):
         # passorder参数（旧版纯位置传参，共10个参数）
         # 参数顺序：opType(23=买入), orderType(1102=按价格), 账号, 股票代码, prType(11=指定价), 
         #          挂单价格, 手数(double), 市场代码(int), 策略名称, 消息, ContextInfo
-        passorder(
-            23,                  # 1. 操作类型：买入
-            1102,                # 2. 下单类型：按价格买入
-            TRADE_ACCOUNT,       # 3. 交易账号
-            stock_code,          # 4. 股票代码
-            11,                  # 5. 价格类型：指定价
-            buy_price,           # 6. 挂单价格
-            float(lots),         # 7. 手数（转double类型）
-            market_code,         # 8. 市场代码（1=上海，2=深圳）
-            "千竞策略",          # 9. 策略名称（字符串）
-            "实盘买入",          # 10. 消息（字符串）
-            ContextInfo          # 11. QMT全局对象
-        )
-        passorder(23, 1101, TRADE_ACCOUNT, stock_code, 11, buy_price, float(lots), '千竞策略', market_code, "实盘买入", ContextInfo)
-        print(f"🎉 挂单请求发送成功：{stock_code} | 价格{buy_price:.2f}元 | {lots}手")
+        print(f"market_code: {market_code}")
+        print(f"float(lots): {float(lots)}")
+        passorder(23, 1101, TRADE_ACCOUNT, stock_code, 11, buy_price, float(lots), '千竞策略', 2, "实盘买入", ContextInfo)
+        print(f" 挂单请求发送成功：{stock_code} | 价格{buy_price:.2f}元 | {lots}手")
         return True
-    
+
     except Exception as e:
-        print(f"❌ 挂单失败：{str(e)}")
+        print(f"? 挂单失败：{str(e)}")
         return False
 
 def check_order_status(stock_code, expected_price, expected_lots):
@@ -480,7 +243,7 @@ def check_order_status(stock_code, expected_price, expected_lots):
         order_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "order")
         
         if not isinstance(order_data, list) or len(order_data) == 0:
-            print(f"⚠️ 未查询到委托记录")
+            print(f" 未查询到委托记录")
             return False
         
         # 筛选目标委托（匹配股票代码、价格、手数，且状态为未成交/部分成交）
@@ -495,17 +258,17 @@ def check_order_status(stock_code, expected_price, expected_lots):
                 break
         
         if target_order:
-            print(f"✅ 委托成功：委托号{target_order.m_nTaskId} | 状态{target_order.m_nOrderStatus}")
+            print(f"? 委托成功：委托号{target_order.m_nTaskId} | 状态{target_order.m_nOrderStatus}")
             return True
         else:
             # 打印所有委托记录，方便排查
-            print(f"⚠️ 未找到目标委托，当前所有委托：")
+            print(f" 未找到目标委托，当前所有委托：")
             for idx, order in enumerate(order_data):
                 print(f"  委托{idx+1}：{order.m_strOrderCode} | {order.m_dModelPrice}元 | {order.m_nVolume}手 | 状态{order.m_nOrderStatus}")
             return False
     
     except Exception as e:
-        print(f"❌ 委托状态查询异常：{str(e)}")
+        print(f"? 委托状态查询异常：{str(e)}")
         return False
 
 def check_position_status(stock_code, expected_lots):
@@ -516,7 +279,7 @@ def check_position_status(stock_code, expected_lots):
         position_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "position")
         
         if not isinstance(position_data, list) or len(position_data) == 0:
-            print(f"⚠️ 未查询到持仓记录")
+            print(f" 未查询到持仓记录")
             return False
         
         # 筛选目标持仓（匹配股票代码，且持仓数量≥预期手数×100）
@@ -530,17 +293,17 @@ def check_position_status(stock_code, expected_lots):
                 break
         
         if target_position:
-            print(f"✅ 买入成功：{stock_code} | 持仓{target_position.m_nVolume}股 | 成本{target_position.m_dCostPrice:.2f}元")
+            print(f"? 买入成功：{stock_code} | 持仓{target_position.m_nVolume}股 | 成本{target_position.m_dCostPrice:.2f}元")
             return True
         else:
             # 打印所有持仓记录，方便排查
-            print(f"⚠️ 未找到目标持仓，当前所有持仓：")
+            print(f" 未找到目标持仓，当前所有持仓：")
             for idx, pos in enumerate(position_data):
                 print(f"  持仓{idx+1}：{pos.m_strStockCode} | {pos.m_nVolume}股 | 成本{pos.m_dCostPrice:.2f}元")
             return False
     
     except Exception as e:
-        print(f"❌ 持仓状态查询异常：{str(e)}")
+        print(f"? 持仓状态查询异常：{str(e)}")
         return False
 
 # ===================== 5. QMT策略核心函数 =====================
@@ -569,12 +332,10 @@ def handlebar(ContextInfo):
     
     # 执行条件：① 未交易过 ② 竞价时段（9:27-9:30）
     if IS_TRADED or not ("09:27:00" <= current_time <= "09:30:00"):
-        return
+       return
+    # if IS_TRADED:
+    #     return
 
-    # 执行条件：仅当未交易过时执行
-    if IS_TRADED:
-        return
-    
     try:
         # 1. 读取MongoDB股票篮子
         stock_codes = get_today_stock_basket()
@@ -585,7 +346,7 @@ def handlebar(ContextInfo):
         # 2. 计算买入参数（价格+手数）
         buy_params = calculate_buy_params(ContextInfo, stock_codes)
         if len(buy_params) == 0:
-            print(f"ℹ️ 无有效买入参数，终止交易")
+            print(f" 无有效买入参数，终止交易")
             IS_TRADED = True
             return
         
@@ -613,10 +374,10 @@ def handlebar(ContextInfo):
         
         # 4. 标记为已交易（当天不再执行）
         IS_TRADED = True
-        print(f"\n✅ 所有股票买入操作已完成")
+        print(f"\n? 所有股票买入操作已完成")
     
     except Exception as e:
-        print(f"\n❌ 策略执行异常：{str(e)}")
+        print(f"\n? 策略执行异常：{str(e)}")
         IS_TRADED = True  # 避免异常后重复执行
 
 def stop(ContextInfo):
@@ -665,22 +426,22 @@ get_market_data接口版本较老，推荐使用get_market_data_ex替代，配�
 【挂单操作】股票：000090.SZ
 market_code: 2
 float(lots): 1200.0
-?? 挂单请求发送成功：000090.SZ | 价格3.90元 | 1200手
+ 挂单请求发送成功：000090.SZ | 价格3.90元 | 1200手
 
 [2025-11-12 09:27:07][新建策略文件][SH000300][1分钟] 
 【委托状态检查】股票：000090.SZ
-?? 未找到目标委托，当前所有委托：
+ 未找到目标委托，当前所有委托：
 ? 委托状态查询异常：'COrderDetail' object has no attribute 'm_strOrderCode'
 
 [2025-11-12 09:27:08][新建策略文件][SH000300][1分钟] 
 【挂单操作】股票：000037.SZ
 market_code: 2
 float(lots): 400.0
-?? 挂单请求发送成功：000037.SZ | 价格10.60元 | 400手
+ 挂单请求发送成功：000037.SZ | 价格10.60元 | 400手
 
 [2025-11-12 09:27:11][新建策略文件][SH000300][1分钟] 
 【委托状态检查】股票：000037.SZ
-?? 未找到目标委托，当前所有委托：
+ 未找到目标委托，当前所有委托：
 ? 委托状态查询异常：'COrderDetail' object has no attribute 'm_strOrderCode'
 
 [2025-11-12 09:27:12][新建策略文件][SH000300][1分钟] 
