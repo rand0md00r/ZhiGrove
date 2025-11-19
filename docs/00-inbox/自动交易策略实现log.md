@@ -1,4 +1,4 @@
-挂单策略流程图：
+自动交易策略流程图：
 
 1. 读取MongoDB篮子股票信息；
 2. 计算每个股票的买单信息：按价格买入（1102），计算买入价格（竞价末尾位置的1.02，向下取整）；
@@ -6,6 +6,7 @@
 4. 检查委托列表，判断是否成功挂单；
 5. 检查买入列表，判断是否成功买入；
 
+6. 卖出逻辑：第二天早盘9：30开始挂出卖单，按开盘价格 * 1.091卖出；下午2:55检查是否完成卖出，如果没卖出，撤单，2:57尾盘竞价开始时，挂跌停价卖出；
 
 #########################################################################################################################
 
@@ -33,6 +34,21 @@ SYNC_DELAY = 3                 # 数据同步等待时间（秒）
 
 # 全局状态
 IS_TRADED = False              # 当天是否已执行交易
+MORNING_SOLD = False           # 是否已执行早盘卖出（9:30）
+AFTERNOON_SOLD = False         # 是否已执行尾盘卖出（14:57）
+CANCEL_DONE = False            # 是否已执行过 14:55 撤单
+
+# 调试开关（方便在 QMT 里手动触发单个流程）
+DEBUG_FORCE_MORNING_SELL   = False   # True 时忽略时间条件，强制执行早盘卖出
+DEBUG_FORCE_CANCEL_SELL    = False   # True 时忽略时间条件，强制执行 14:55 撤单
+DEBUG_FORCE_AFTERNOON_SELL = False   # True 时忽略时间条件，强制执行尾盘卖出
+DEBUG_FORCE_AUCTION_BUY    = False   # True 时忽略时间条件，强制执行竞价买入
+
+def log_block(title):
+    print("\n" + "=" * 40)
+    print(f"{title}  时间：{datetime.now().strftime('%H:%M:%S')}")
+    print("=" * 40)
+
 
 # ===================== 2. MongoDB工具函数 =====================
 def get_today_stock_basket(max_retries=18, retry_interval=10):
@@ -81,15 +97,83 @@ def get_today_stock_basket(max_retries=18, retry_interval=10):
     return []
 
 # ===================== 3. 市场与价格工具函数 =====================
-def get_market_code(stock_code):
-    """获取市场代码（int类型，适配passorder）：上海=1，深圳=2"""
-    if stock_code.endswith(".SH") or stock_code.startswith("60"):
-        return 1, "上海市场"
-    elif stock_code.endswith(".SZ") or stock_code.startswith(("00", "30")):
-        return 2, "深圳市场"
-    else:
-        print(f" 未知市场：{stock_code}，默认上海市场（1）")
-        return 1, "默认上海市场"
+def normalize_code(code: str) -> str:
+    """统一股票代码比较格式，去掉 .SH/.SZ 等后缀"""
+    if not code:
+        return ""
+    return code.split('.')[0]
+
+
+def is_prev_day_or_earlier_position(open_date, today_str):
+    """
+    判断持仓是否为前一交易日及更早建仓（用于次日卖出安全判断）
+    - open_date: 持仓上的建仓日期字段（int 或 str），如 20241118 或 "2024-11-18"
+    - today_str: 今天日期字符串，格式 "YYYY-MM-DD"
+    """
+    if open_date is None:
+        # 当前账号只有策略仓位，为避免误判，这里默认允许卖出
+        # 如果以后账号里有长期仓位，可以改成 False 更保守
+        return True
+    try:
+        today_int = int(today_str.replace('-', ''))
+        if isinstance(open_date, int):
+            open_int = open_date
+        else:
+            open_int = int(str(open_date).replace('-', ''))
+        # 只要建仓日期早于今天，就认为是“前一日及更早”
+        return open_int < today_int
+    except Exception:
+        # 日期解析失败时，默认允许（同样基于“专用策略账号”的假设）
+        return True
+
+
+def get_current_holdings(ContextInfo):
+    """查询当前实际持仓（直接从账户获取，不依赖ContextInfo存储）"""
+    holdings = []
+    try:
+        print(f"\n【查询当前持仓】账号：{TRADE_ACCOUNT}")
+        position_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "position")
+        
+        if not isinstance(position_data, list) or len(position_data) == 0:
+            print(f" 未查询到任何持仓")
+            return holdings
+        
+        for pos in position_data:
+            # 提取持仓核心信息
+            pos_stock_code = pos.m_strInstrumentID if hasattr(pos, "m_strInstrumentID") else pos.m_strStockCode
+            volume = pos.m_nVolume if hasattr(pos, "m_nVolume") else 0
+            if volume < 100:  # 不足1手忽略
+                continue
+            
+            # 转换为完整股票代码（补全市场后缀）
+            if pos_stock_code.startswith("60"):
+                full_code = f"{pos_stock_code}.SH"
+            elif pos_stock_code.startswith(("00", "30")):
+                full_code = f"{pos_stock_code}.SZ"
+            else:
+                full_code = pos_stock_code
+            
+            # 尝试读取持仓建仓日期
+            open_date = None
+            if hasattr(pos, "m_nOpenDate"):
+                open_date = pos.m_nOpenDate
+            elif hasattr(pos, "m_nDate"):
+                open_date = pos.m_nDate
+
+            holdings.append({
+                "stock_code": full_code,
+                "pure_code": normalize_code(pos_stock_code),
+                "lots": int(volume // 100),  # 手数
+                "shares": volume,            # 股数
+                "open_date": open_date       # 建仓日期（用于次日判断）
+            })
+        
+        print(f" 当前持仓：{[h['stock_code'] for h in holdings]}（共{len(holdings)}只）")
+        return holdings
+    
+    except Exception as e:
+        print(f" 查询持仓异常：{str(e)}")
+        return holdings
 
 def get_auction_price(ContextInfo, stock_code):
     """获取股票集合竞价末尾价格（9:27-9:30时段有效）"""
@@ -191,22 +275,20 @@ def calculate_buy_params(ContextInfo, stock_codes):
             
             # 计算最大买入股数
             max_shares = single_stock_cash / buy_price
-            max_lots = int(max_shares // 100) * 100
+            buy_shares = int(max_shares // 100) * 100
             
-            if max_lots < 100:
+            if buy_shares < 100:
                 print(f" 资金不足买入1手：{stock}（需{buy_price*100:.2f}元，可用{single_stock_cash:.2f}元）")
                 continue
             
             # 记录买入参数
-            market_code, _ = get_market_code(stock)
             buy_params.append({
                 "stock_code": stock,
                 "buy_price": buy_price,
-                "lots": max_lots,
-                "market_code": market_code
+                "lots": buy_shares
             })
             
-            print(f" 买入参数：{stock} | 价格{buy_price:.2f}元 | {max_lots}手（{max_lots*100}股）")
+            print(f" 买入参数：{stock} | 价格{buy_price:.2f}元 | {buy_shares}股")
         
         return buy_params
     
@@ -215,15 +297,13 @@ def calculate_buy_params(ContextInfo, stock_codes):
         return []
 
 # ===================== 4. 挂单与状态检查函数 =====================
-def place_order(ContextInfo, stock_code, buy_price, lots, market_code):
+def place_order(ContextInfo, stock_code, buy_price, lots):
     """执行挂单操作（下单类型1102=按价格买入）"""
     try:
         print(f"\n【挂单操作】股票：{stock_code}")
         # passorder参数（旧版纯位置传参，共10个参数）
         # 参数顺序：opType(23=买入), orderType(1102=按价格), 账号, 股票代码, prType(11=指定价), 
         #          挂单价格, 手数(double), 市场代码(int), 策略名称, 消息, ContextInfo
-        print(f"market_code: {market_code}")
-        print(f"float(lots): {float(lots)}")
         passorder(23, 1101, TRADE_ACCOUNT, stock_code, 11, buy_price, float(lots), '千竞策略', 2, "实盘买入", ContextInfo)
         print(f" 挂单请求发送成功：{stock_code} | 价格{buy_price:.2f}元 | {lots}手")
         return True
@@ -232,12 +312,12 @@ def place_order(ContextInfo, stock_code, buy_price, lots, market_code):
         print(f" 挂单失败：{str(e)}")
         return False
 
-def place_sell_order(ContextInfo, stock_code, sell_price, lots):
+def place_sell_order(ContextInfo, stock_code, sell_price, shares):
     """执行卖出挂单（opType=24=股票卖出，返回委托ID）"""
     try:
-        print(f"\n【卖出挂单】股票：{stock_code} | 价格={sell_price:.2f}元 | 手数={lots}")
+        print(f"\n【卖出挂单】股票：{stock_code} | 价格={sell_price:.2f}元 | 股数={shares}")
         # 调用passorder卖出：opType=24（卖出），orderType=1101（按手数），prType=11（指定价）
-        passorder(24, 1101, TRADE_ACCOUNT, stock_code, 11, sell_price, float(lots), '千竞策略', 2, "实盘卖出", ContextInfo)
+        passorder(24, 1101, TRADE_ACCOUNT, stock_code, 11, sell_price, float(shares), '千竞策略', 2, "实盘卖出", ContextInfo)
         
         # 获取卖出委托ID（用于后续撤单）
         sell_order_id = get_latest_order_id_by_api()
@@ -358,7 +438,7 @@ def check_order_status(stock_code, expected_price, expected_lots):
         return False
 
 def check_position_status(stock_code, expected_lots):
-    """检查持仓状态（判断是否成功买入，新增记录持仓到ContextInfo）"""
+    """检查持仓状态（判断是否成功买入，expected_lots 实际为股数）"""
     try:
         print(f"\n【持仓状态检查】股票：{stock_code}")
         position_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "position")
@@ -368,11 +448,13 @@ def check_position_status(stock_code, expected_lots):
             return False
         
         target_position = None
-        expected_shares = expected_lots * 100
+        # 注意：这里传进来的 expected_lots 实际就是“股数”（已经是 100 的整数倍）
+        expected_shares = expected_lots
+        pure_code = stock_code.split('.')[0]  # 新增：去掉 .SH/.SZ 后缀
         for pos in position_data:
             # 优先用API标准字段m_strInstrumentID匹配
             pos_stock_code = pos.m_strInstrumentID if hasattr(pos, "m_strInstrumentID") else pos.m_strStockCode
-            if (pos_stock_code == stock_code and
+            if (pos_stock_code == pure_code and
                 hasattr(pos, "m_nVolume") and pos.m_nVolume >= expected_shares):
                 target_position = pos
                 break
@@ -380,40 +462,199 @@ def check_position_status(stock_code, expected_lots):
         if target_position:
             cost_price = target_position.m_dOpenPrice if hasattr(target_position, "m_dOpenPrice") else 0.0
             print(f" 买入成功：{stock_code} | 持仓{target_position.m_nVolume}股 | 成本{cost_price:.2f}元")
-            
-            # 新增：记录持仓到ContextInfo（供第二天卖出使用）
-            hold_info = {
-                "stock_code": stock_code,
-                "lots": expected_lots,
-                "morning_order_id": None,  # 早盘卖出委托ID
-                "is_sold": False  # 是否已卖出
-            }
-            # 避免重复添加持仓
-            if not any(h["stock_code"] == stock_code for h in ContextInfo.hold_stocks):
-                ContextInfo.hold_stocks.append(hold_info)
             return True
+
         else:
             print(f" 未找到目标持仓")
             return False
+        
     
     except Exception as e:
         print(f" 持仓状态查询异常：{str(e)}")
         return False
 
+    return False
+
+def run_morning_sell(ContextInfo, current_date):
+    """早盘卖出流程：按开盘价 * 1.091 卖出前一日及更早的持仓"""
+    log_block("早盘卖出流程启动")
+
+    holdings = get_current_holdings(ContextInfo)
+    if len(holdings) == 0:
+        print("【早盘卖出】当前无持仓，结束")
+        return
+
+    for hold in holdings:
+        stock_code = hold["stock_code"]
+        shares = hold["shares"]
+        open_date = hold.get("open_date")
+
+        # 只卖出前一日及更早建仓的持仓，避免误卖当日新买入
+        if not is_prev_day_or_earlier_position(open_date, current_date):
+            print(f"【早盘卖出】跳过 {stock_code}：持仓非前日/更早建仓（open_date={open_date}）")
+            continue
+        
+        # 获取开盘价，按开盘价×1.091挂单（向下取整到0.01）
+        try:
+            full_tick = ContextInfo.get_full_tick([stock_code])
+            zero_price = full_tick[stock_code]['lastClose']  # 今日 0% 基准价（昨收）
+
+            if zero_price <= 0 or math.isnan(zero_price):
+                print(f"【早盘卖出】跳过 {stock_code}：0% 基准价异常（{zero_price:.2f}元）")
+                continue
+
+            pure_code = normalize_code(stock_code)
+            if pure_code.startswith("30"):      # 创业板：涨跌幅 20%
+                factor = 1.191
+            else:                               # 其它：默认按 10% 档处理
+                factor = 1.091
+
+            sell_price = math.floor(zero_price * factor * 100) / 100
+            print(f"【早盘卖出】{stock_code} 基准价={zero_price:.2f} * {factor} -> 卖出价={sell_price:.2f}元")
+
+        except Exception as e:
+            print(f"【早盘卖出】跳过 {stock_code}：获取基准价异常 - {str(e)}")
+            continue
+        
+        # 执行卖出挂单
+        place_sell_order(ContextInfo, stock_code, sell_price, shares)
+
+    print("【早盘卖出】批量挂单结束")
+
+
+def run_cancel_open_sells(ContextInfo):
+    """尾盘前撤销未成交的卖出委托"""
+    log_block("14:55 撤销卖出委托流程")
+
+    holdings = get_current_holdings(ContextInfo)
+    if len(holdings) == 0:
+        print("【撤单】当前无持仓，跳过撤单")
+        return
+
+    holding_codes = {h["pure_code"] for h in holdings}
+
+    order_list = get_trade_detail_data(TRADE_ACCOUNT, "stock", "order")
+    if not isinstance(order_list, list) or len(order_list) == 0:
+        print("【撤单】无委托记录可撤")
+        return
+
+    cancellable_status = {50, 51, 55}  # 已报 / 已报待撤 / 部分成交
+
+    for order in order_list:
+        # 提取股票代码
+        order_code = None
+        if hasattr(order, "m_strInstrumentID"):
+            order_code = normalize_code(order.m_strInstrumentID)
+        elif hasattr(order, "m_strStockCode"):
+            order_code = normalize_code(order.m_strStockCode)
+
+        if not order_code or order_code not in holding_codes:
+            continue
+
+        # 只处理卖出方向（1=买, 2=卖；如与你环境不符，改这里）
+        order_side = getattr(order, "m_nDirection", None)
+        if order_side is not None and order_side != 2:
+            continue
+
+        status = getattr(order, "m_nOrderStatus", None)
+        if status not in cancellable_status:
+            continue
+
+        # 提取委托ID（字段名按实际环境调整）
+        order_id = None
+        if hasattr(order, "m_strOrderID"):
+            order_id = order.m_strOrderID
+        elif hasattr(order, "m_strOrderSysID"):
+            order_id = order.m_strOrderSysID
+
+        if not order_id:
+            print(f"【撤单】找不到可用委托ID，股票={order_code}，跳过")
+            continue
+
+        cancel_order(ContextInfo, order_id, order_code)
+
+    print("【撤单】尾盘撤单流程完成")
+
+
+def run_afternoon_sell(ContextInfo):
+    """尾盘 14:57 跌停价强行卖出所有持仓"""
+    log_block("尾盘卖出流程启动")
+
+    holdings = get_current_holdings(ContextInfo)
+    if len(holdings) == 0:
+        print("【尾盘卖出】当前无持仓，结束")
+        return
+
+    for hold in holdings:
+        stock_code = hold["stock_code"]
+        shares = hold["shares"]
+        
+        # 获取跌停价，挂跌停价卖出
+        _, down_limit = get_limit_prices(ContextInfo, stock_code)
+        if down_limit <= 0:
+            print(f"【尾盘卖出】跳过 {stock_code}：跌停价计算异常")
+            continue
+        
+        place_sell_order(ContextInfo, stock_code, down_limit, shares)
+        print(f"【尾盘卖出】{stock_code} 挂单 | 跌停价={down_limit:.2f}元 | 股数={shares}")
+
+    print("【尾盘卖出】批量挂单完成")
+
+def run_auction_buy(ContextInfo):
+    """竞价买入流程：9:28-9:30 读取 Mongo 股池并按竞价价买入"""
+    log_block("竞价买入流程启动")
+
+    # 1. 读取MongoDB股票篮子
+    stock_codes = get_today_stock_basket()
+    if len(stock_codes) == 0:
+        print("【竞价买入】MongoDB 未返回股票篮子，本日不再尝试")
+        return False
+    
+    # 2. 计算买入参数（价格+手数）
+    buy_params = calculate_buy_params(ContextInfo, stock_codes)
+    if len(buy_params) == 0:
+        print("【竞价买入】无有效买入参数，终止交易")
+        return False
+    
+    # 3. 逐股执行挂单+状态检查
+    for params in buy_params:
+        stock_code = params["stock_code"]
+        buy_price = params["buy_price"]
+        lots = params["lots"]
+        
+        print(f"\n[买入流程] {stock_code} | 目标价={buy_price:.2f} | lots={lots}")
+
+        # 挂单
+        if not place_order(ContextInfo, stock_code, buy_price, lots):
+            continue
+        
+        # 等待数据同步
+        time.sleep(SYNC_DELAY)
+        
+        # 检查委托状态
+        if check_order_status(stock_code, buy_price, lots):
+            # 检查持仓状态（可选）
+            check_position_status(stock_code, lots)
+        
+        # 每只股票操作后间隔1秒，避免请求过于频繁
+        time.sleep(1)
+    
+    print("【竞价买入】所有股票买入流程结束")
+    return True
+
+
 # ===================== 5. QMT策略核心函数 =====================
 def init(ContextInfo):
     """策略初始化（仅执行一次）"""
-    global IS_TRADED
+    global IS_TRADED, MORNING_SOLD, AFTERNOON_SOLD, CANCEL_DONE
     IS_TRADED = False
+    MORNING_SOLD = False
+    AFTERNOON_SOLD = False
+    CANCEL_DONE = False
     
     # 绑定交易账号
     ContextInfo.accID = TRADE_ACCOUNT
     ContextInfo.set_account(TRADE_ACCOUNT)
-    
-    # 新增：卖出相关全局状态（跨交易日存储，依赖ContextInfo）
-    ContextInfo.hold_stocks = []  # 存储持仓股票信息：[{stock_code, lots, morning_order_id, is_sold}]
-    ContextInfo.morning_sold = False  # 是否已执行早盘卖出（9:30）
-    ContextInfo.afternoon_sold = False  # 是否已执行尾盘卖出（14:57）
     
     print("="*80)
     print(f"【实盘买入策略启动】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -421,169 +662,50 @@ def init(ContextInfo):
     print(f"  - MongoDB：{MONGO_URI.split('@')[-1]}/{DB_NAME}/{COLLECTION_NAME}")
     print(f"  - 交易账号：{TRADE_ACCOUNT}")
     print(f"  - 买入规则：竞价价×{PRICE_MULTIPLE}（向下取整），资金均分")
-    print(f"  - 卖出规则：次日9:30涨停价×0.91挂单，14:55未卖撤单，14:57跌停价卖出")
+    print(f"  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出")
     print("="*80)
 
 def handlebar(ContextInfo):
-    """策略循环执行（仅在竞价期9:27-9:30执行）"""
-    global IS_TRADED
+    """策略循环执行：负责按时间窗口调度各个流程"""
+    global IS_TRADED, MORNING_SOLD, AFTERNOON_SOLD, CANCEL_DONE
     current_time = datetime.now().strftime("%H:%M:%S")
     current_date = datetime.now().strftime("%Y-%m-%d")
 
-    # ===================== 新增：卖出逻辑 =====================
-    # 1. 早盘卖出（第二天9:30-9:30:30，仅执行一次）
-    if (not ContextInfo.morning_sold and 
-        "09:30:00" <= current_time <= "09:30:30" and 
-        len(ContextInfo.hold_stocks) > 0):
-        print(f"\n【早盘卖出】时间窗口触发（{current_time}）")
-        for hold in ContextInfo.hold_stocks:
-            if hold["is_sold"]:
-                continue
-            stock_code = hold["stock_code"]
-            lots = hold["lots"]
-            
-            # 获取涨停价，按涨停价×0.91挂单
-            up_limit, _ = get_limit_prices(ContextInfo, stock_code)
-            if up_limit <= 0:
-                print(f" 跳过{stock_code}：涨停价计算异常")
-                continue
-            sell_price = math.floor(up_limit * 0.91 * 100) / 100  # 向下取整到0.01
-            
-            # 执行卖出挂单，记录委托ID
-            sell_order_id = place_sell_order(ContextInfo, stock_code, sell_price, lots)
-            if sell_order_id:
-                hold["morning_order_id"] = sell_order_id  # 记录委托ID供撤单使用
-        
-        ContextInfo.morning_sold = True  # 标记已执行早盘卖出
-        print(f"【早盘卖出】批量挂单完成，等待成交")
+    # 1. 早盘卖出（第二天 9:26-9:26:30，仅执行一次，或 debug 强制执行）
+    if ((DEBUG_FORCE_MORNING_SELL and not MORNING_SOLD) or
+        (not MORNING_SOLD and "09:26:00" <= current_time <= "09:45:30")):
+        run_morning_sell(ContextInfo, current_date)
+        MORNING_SOLD = True
         return
 
-    # 2. 新增：早盘成交监控（9:30:31-14:49:59，持续检查是否成交）
-    elif (ContextInfo.morning_sold and 
-          not ContextInfo.afternoon_sold and 
-          "09:30:31" <= current_time <= "14:49:59" and 
-          len(ContextInfo.hold_stocks) > 0):
-        # 每30秒检查一次（避免频繁请求，可调整间隔）
-        current_second = datetime.now().second
-        if current_second % 30 != 0:  # 只在整30秒时检查（如9:30:30、9:31:00...）
-            return
-        
-        print(f"\n【早盘成交监控】时间：{current_time}（每30秒检查一次）")
-        for hold in ContextInfo.hold_stocks:
-            # 已卖出或无委托ID，跳过
-            if hold["is_sold"] or not hold["morning_order_id"]:
-                continue
-            
-            stock_code = hold["stock_code"]
-            order_id = hold["morning_order_id"]
-            expected_lots = hold["lots"]
-            
-            # 用委托ID查询最新状态（判断是否成交）
-            order_detail = get_value_by_order_id(order_id, TRADE_ACCOUNT, 'stock', 'ORDER')
-            if not order_detail:
-                print(f" 跳过{stock_code}：委托ID={order_id} 详情查询失败")
-                continue
-            
-            # 检查委托状态：56=已成，55=部分成交（均视为成交）
-            if hasattr(order_detail, "m_nOrderStatus") and order_detail.m_nOrderStatus in (55, 56):
-                # 验证持仓是否同步（双重确认）
-                if check_position_status(stock_code, expected_lots):
-                    hold["is_sold"] = True
-                    hold["morning_order_id"] = None  # 清空委托ID
-                    print(f" 监控到{stock_code}成交 | 委托ID={order_id} | 状态={order_detail.m_nOrderStatus}")
-            else:
-                # 未成交，打印当前状态
-                status_desc = {50:"已报",51:"已报待撤",54:"已撤",57:"废单"}.get(order_detail.m_nOrderStatus, f"未知({order_detail.m_nOrderStatus})")
-                print(f" {stock_code}未成交 | 委托ID={order_id} | 状态={status_desc} | 挂单价={order_detail.m_dLimitPrice:.2f}元")
+    # 2. 尾盘前撤单（14:55-14:55:30，仅执行一次，或 debug 强制执行）
+    if ((DEBUG_FORCE_CANCEL_SELL and not CANCEL_DONE) or
+        (MORNING_SOLD and not AFTERNOON_SOLD and not CANCEL_DONE and
+         "14:55:00" <= current_time <= "14:55:30")):
+        run_cancel_open_sells(ContextInfo)
+        CANCEL_DONE = True
         return
 
-    # 2. 撤单逻辑（14:55-14:55:30，仅执行一次）
-    if (ContextInfo.morning_sold and 
-        not ContextInfo.afternoon_sold and 
-        "14:55:00" <= current_time <= "14:55:30" and 
-        len(ContextInfo.hold_stocks) > 0):
-        print(f"\n【尾盘撤单】时间窗口触发（{current_time}）")
-        for hold in ContextInfo.hold_stocks:
-            if hold["is_sold"] or not hold["morning_order_id"]:
-                continue
-            # 撤销早盘未成交委托
-            cancel_result = cancel_order(ContextInfo, hold["morning_order_id"], hold["stock_code"])
-            if cancel_result:
-                hold["morning_order_id"] = None  # 清空委托ID
-        print(f"【尾盘撤单】批量撤单完成，准备尾盘卖出")
+    # 3. 尾盘卖出（14:57-14:57:30，仅执行一次，或 debug 强制执行）
+    if ((DEBUG_FORCE_AFTERNOON_SELL and not AFTERNOON_SOLD) or
+        (not AFTERNOON_SOLD and "14:57:00" <= current_time <= "14:57:30")):
+        run_afternoon_sell(ContextInfo)
+        AFTERNOON_SOLD = True
         return
 
-    # 3. 尾盘卖出（14:57-14:57:30，仅执行一次）
-    if (not ContextInfo.afternoon_sold and 
-        "14:57:00" <= current_time <= "14:57:30" and 
-        len(ContextInfo.hold_stocks) > 0):
-        print(f"\n【尾盘卖出】时间窗口触发（{current_time}）")
-        for hold in ContextInfo.hold_stocks:
-            if hold["is_sold"]:
-                continue
-            stock_code = hold["stock_code"]
-            lots = hold["lots"]
-            
-            # 获取跌停价，挂跌停价卖出
-            _, down_limit = get_limit_prices(ContextInfo, stock_code)
-            if down_limit <= 0:
-                print(f" 跳过{stock_code}：跌停价计算异常")
-                continue
-            
-            # 执行尾盘卖出挂单
-            place_sell_order(ContextInfo, stock_code, down_limit, lots)
-            hold["is_sold"] = True  # 标记已发起尾盘卖出
-        
-        ContextInfo.afternoon_sold = True  # 标记已执行尾盘卖出
-        print(f"【尾盘卖出】批量挂单完成")
-        return
-
-    # 执行条件：① 未交易过 ② 竞价时段（9:27-9:30）
-    if not IS_TRADED and "09:27:30" <= current_time <= "09:30:00":
+    # 4. 竞价买入（9:27:30-9:30，仅执行一次，或 debug 强制执行）
+    if ((DEBUG_FORCE_AUCTION_BUY and not IS_TRADED) or
+        (not IS_TRADED and "09:27:30" <= current_time <= "09:30:00")):
         try:
-            # 1. 读取MongoDB股票篮子
-            stock_codes = get_today_stock_basket()
-            if len(stock_codes) == 0:
-                IS_TRADED = True  # 标记为已交易（避免重复执行）
-                return
-            
-            # 2. 计算买入参数（价格+手数）
-            buy_params = calculate_buy_params(ContextInfo, stock_codes)
-            if len(buy_params) == 0:
-                print(f" 无有效买入参数，终止交易")
-                IS_TRADED = True
-                return
-            
-            # 3. 逐股执行挂单+状态检查
-            for params in buy_params:
-                stock_code = params["stock_code"]
-                buy_price = params["buy_price"]
-                lots = params["lots"]
-                market_code = params["market_code"]
-                
-                # 挂单
-                if not place_order(ContextInfo, stock_code, buy_price, lots, market_code):
-                    continue
-                
-                # 等待数据同步
-                time.sleep(SYNC_DELAY)
-                
-                # 检查委托状态
-                if check_order_status(stock_code, buy_price, lots):
-                    # 检查持仓状态（可选：如果需要确认成交，可增加循环检查）
-                    check_position_status(stock_code, lots)
-                
-                # 每只股票操作后间隔1秒，避免请求过于频繁
-                time.sleep(1)
-            
-            # 4. 标记为已交易（当天不再执行）
+            traded = run_auction_buy(ContextInfo)
+            # 不管成功与否，只要进过一次流程，就视为“本日已尝试过”，避免重复
             IS_TRADED = True
-            print(f"\n 所有股票买入操作已完成")
-        
         except Exception as e:
-            print(f"\n 策略执行异常：{str(e)}")
+            print(f"\n[ERROR] 竞价买入流程异常：{str(e)}")
             IS_TRADED = True  # 避免异常后重复执行
-    
+        return
+
+
 
 def stop(ContextInfo):
     """策略停止"""
@@ -597,80 +719,13 @@ def stop(ContextInfo):
 
 
 
-
-[2025-11-12 09:02:22][新建策略文件][SH000300][1分钟] [trade]start trading mode
-[2025-11-12 09:02:22][新建策略文件][SH000300][1分钟] ================================================================================
-【实盘买入策略启动】时间：2025-11-12 09:02:22
-配置信息：
-  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
-  - 交易账号：904800028165
-  - 买入规则：竞价价×1.02（向下取整），资金均分
-  - 最大买入股票：5只
-================================================================================
-
-[2025-11-12 09:27:04][新建策略文件][SH000300][1分钟] 
-【MongoDB查询】时间：2025-11-12 09:27:04
-
-[2025-11-12 09:27:04][新建策略文件][SH000300][1分钟] ? 获取今日股票篮子：['000090.SZ', '000037.SZ']（共2只）
-
-【资金查询】账号：904800028165
-? 可用资金：9999.00元
-? 单只股票可用资金：4984.50元（含手续费预留）
-
-【竞价价查询】股票：000090.SZ
-get_market_data接口版本较老，推荐使用get_market_data_ex替代，配合download_history_data补充昨日以前的历史数据
-
-[2025-11-12 09:27:04][新建策略文件][SH000300][1分钟] ? 集合竞价价格：3.83元
-? 买入参数：000090.SZ | 价格3.90元 | 1200手（120000股）
-
-【竞价价查询】股票：000037.SZ
-
-[2025-11-12 09:27:04][新建策略文件][SH000300][1分钟] ? 集合竞价价格：10.40元
-? 买入参数：000037.SZ | 价格10.60元 | 400手（40000股）
-
-【挂单操作】股票：000090.SZ
-market_code: 2
-float(lots): 1200.0
- 挂单请求发送成功：000090.SZ | 价格3.90元 | 1200手
-
-[2025-11-12 09:27:07][新建策略文件][SH000300][1分钟] 
-【委托状态检查】股票：000090.SZ
- 未找到目标委托，当前所有委托：
-? 委托状态查询异常：'COrderDetail' object has no attribute 'm_strOrderCode'
-
-[2025-11-12 09:27:08][新建策略文件][SH000300][1分钟] 
-【挂单操作】股票：000037.SZ
-market_code: 2
-float(lots): 400.0
- 挂单请求发送成功：000037.SZ | 价格10.60元 | 400手
-
-[2025-11-12 09:27:11][新建策略文件][SH000300][1分钟] 
-【委托状态检查】股票：000037.SZ
- 未找到目标委托，当前所有委托：
-? 委托状态查询异常：'COrderDetail' object has no attribute 'm_strOrderCode'
-
-[2025-11-12 09:27:12][新建策略文件][SH000300][1分钟] 
-? 所有股票买入操作已完成
-
-[2025-11-12 09:55:05][新建策略文件][SH000300][1分钟] 0D:\国投核心客户极速策略交易终端（ACT）\python\新建策略文件.py_00030014: 策略停止
-[2025-11-12 09:55:05][新建策略文件][SH000300][1分钟] 
-================================================================================
-【策略停止】时间：2025-11-12 09:55:05
-今日交易状态：已执行买入操作
-建议：登录QMT交易模块，查看「委托记录」和「持仓」确认最终状态
-================================================================================
-
-
---- 2025-11-12 问题
+--- 
+# 11月12日 问题
 
 1. 27:00 查询到的数据是错误的个股；
 2. buy_price错误，
 
-
-
-
-
-
+## 日志
 
 [2025-11-13 09:08:12][新建策略文件][SH000300][1分钟] [trade]start trading mode
 [2025-11-13 09:08:12][新建策略文件][SH000300][1分钟] ================================================================================
@@ -763,17 +818,17 @@ float(lots): 500.0
 
 ##################################################################################################################
 
-11月13日
+--- 
 
+# 11月13日
+
+## 问题：
 1. 买入：千尾；
 2. 卖出：千竞 = 涨停价格 * 0.97，向下取整； 千尾 = 涨停价格 * 0.91，向上取整； 没涨停，尾盘直接卖出；
 3. 买入的有效检查 = 查委托 + 查持仓；
 4. 卖出逻辑：第二天早盘9：30开始挂出卖单，按涨停价格 * 0.91卖出；下午2:55检查是否完成卖出，如果没卖出，撤单，2:57尾盘竞价开始时，挂跌停价卖出；
 
-
-
----
-
+## 日志：
 
 [2025-11-14 09:17:57][新建策略文件][SH000300][1分钟] [trade]start trading mode
 [2025-11-14 09:17:57][新建策略文件][SH000300][1分钟] ================================================================================
@@ -836,4 +891,215 @@ float(lots): 100.0
 [2025-11-14 09:28:12][新建策略文件][SH000300][1分钟] 
  所有股票买入操作已完成
 
+
+
+---
+
+# 11月17日 
+
+## 日志：
+
+[2025-11-17 09:11:03][新建策略文件][SH000300][1分钟] [trade]start trading mode
+[2025-11-17 09:11:03][新建策略文件][SH000300][1分钟] ================================================================================
+【实盘买入策略启动】时间：2025-11-17 09:11:03
+配置信息：
+  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
+  - 交易账号：904800028165
+  - 买入规则：竞价价×1.02（向下取整），资金均分
+  - 卖出规则：次日9:30涨停价×0.91挂单，14:55未卖撤单，14:57跌停价卖出
+================================================================================
+
+[2025-11-17 09:28:00][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-17 09:28:00（重试1/18）
+
+[2025-11-17 09:28:00][新建策略文件][SH000300][1分钟] 警告：未找到今日（2025-11-17）有效股票篮子，10秒后重试
+
+[2025-11-17 09:28:10][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-17 09:28:10（重试2/18）
+
+[2025-11-17 09:28:10][新建策略文件][SH000300][1分钟] 警告：未找到今日（2025-11-17）有效股票篮子，10秒后重试
+
+[2025-11-17 09:28:20][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-17 09:28:20（重试3/18）
+
+[2025-11-17 09:28:20][新建策略文件][SH000300][1分钟] 警告：未找到今日（2025-11-17）有效股票篮子，10秒后重试
+
+[2025-11-17 09:28:30][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-17 09:28:30（重试4/18）
+
+[2025-11-17 09:28:30][新建策略文件][SH000300][1分钟]  获取今日股票篮子：['603931.SH']（共1只）
+
+【资金查询】账号：904800028165
+ 可用资金：13209.35元
+ 单只股票可用资金：13169.72元（含手续费预留）
+
+【竞价价格查询】股票：603931.SH
+集合竞价数据-603931.SH：开盘价=32.0, 最新价=32.0 成交量=4901, 成交额=15683200.0
+ 集合竞价价格：32.00元
+ 买入参数：603931.SH | 价格32.64元 | 400手（40000股）
+
+【挂单操作】股票：603931.SH
+market_code: 1
+float(lots): 400.0
+ 挂单请求发送成功：603931.SH | 价格32.64元 | 400手
+
+[2025-11-17 09:28:33][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：603931.SH
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM567559
+ 委托校验通过 | 委托ID=MM567559 | 状态=已报（等待成交） | 股票=603931 | 价格=32.64元 | 手数=400
+
+【持仓状态检查】股票：603931.SH
+ 未找到目标持仓
+
+[2025-11-17 09:28:34][新建策略文件][SH000300][1分钟] 
+ 所有股票买入操作已完成
+
+
+## 问题：
+1. 分成两个账号轮流交易，每次记录两个分仓的信息；
+2. 卖出价格是开盘价的1.091，不是涨停价的0.91
+3. 持仓信息不能用代码中的函数记录，因为每天代码会被关闭，只有早上快开盘的时候才开始运行，所以持仓信息需要直接查询
+4. mongoDB股票信息刷新错误，最后一次更新在update_time 2025-11-17T09:32:32.473+00:00
+
+
+
+---
+
+# 11月18日
  
+## 日志：
+
+[2025-11-18 09:21:23][新建策略文件][SH000300][1分钟] [trade]start trading mode
+[2025-11-18 09:21:23][新建策略文件][SH000300][1分钟] ================================================================================
+【实盘买入策略启动】时间：2025-11-18 09:21:23
+配置信息：
+  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
+  - 交易账号：904800028165
+  - 买入规则：竞价价×1.02（向下取整），资金均分
+  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出
+================================================================================
+
+[2025-11-18 09:28:01][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-18 09:28:01（重试1/18）
+
+[2025-11-18 09:28:01][新建策略文件][SH000300][1分钟]  获取今日股票篮子：['600829.SH', '000636.SZ']（共2只）
+
+【资金查询】账号：904800028165
+ 可用资金：7417.83元
+ 单只股票可用资金：3697.79元（含手续费预留）
+
+【竞价价格查询】股票：600829.SH
+集合竞价数据-600829.SH：开盘价=16.7, 最新价=16.7 成交量=51102, 成交额=85340500.0
+ 集合竞价价格：16.70元
+ 买入参数：600829.SH | 价格17.03元 | 200手（20000股）
+
+【竞价价格查询】股票：000636.SZ
+集合竞价数据-000636.SZ：开盘价=17.830000000000002, 最新价=17.830000000000002 成交量=24239, 成交额=43218100.0
+ 集合竞价价格：17.83元
+ 买入参数：000636.SZ | 价格18.18元 | 200手（20000股）
+
+【挂单操作】股票：600829.SH
+market_code: 1
+float(lots): 200.0
+ 挂单请求发送成功：600829.SH | 价格17.03元 | 200手
+
+[2025-11-18 09:28:04][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：600829.SH
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM575061
+ 委托校验通过 | 委托ID=MM575061 | 状态=已报（等待成交） | 股票=600829 | 价格=17.03元 | 手数=200
+
+【持仓状态检查】股票：600829.SH
+ 未找到目标持仓
+
+[2025-11-18 09:28:05][新建策略文件][SH000300][1分钟] 
+【挂单操作】股票：000636.SZ
+market_code: 2
+float(lots): 200.0
+ 挂单请求发送成功：000636.SZ | 价格18.18元 | 200手
+
+[2025-11-18 09:28:08][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：000636.SZ
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM872166
+ 委托校验通过 | 委托ID=MM872166 | 状态=已报（等待成交） | 股票=000636 | 价格=18.18元 | 手数=200
+
+【持仓状态检查】股票：000636.SZ
+ 未找到目标持仓
+
+[2025-11-18 09:28:09][新建策略文件][SH000300][1分钟] 
+ 所有股票买入操作已完成
+
+[2025-11-18 09:30:00][新建策略文件][SH000300][1分钟] 
+【早盘卖出】时间窗口触发（09:30:00）
+
+【查询当前持仓】账号：904800028165
+ 当前持仓：['603931.SH']（共1只）
+
+【卖出挂单】股票：603931.SH | 价格=33.16元 | 手数=4
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM872166
+ 卖出挂单成功 | 委托ID=MM872166
+【早盘卖出】批量挂单完成，等待成交
+
+[2025-11-18 09:31:00][新建策略文件][SH000300][1分钟] 
+【早盘成交监控】时间：09:31:00（每30秒检查一次）
+
+【查询当前持仓】账号：904800028165
+ 当前持仓：['600829.SH', '603931.SH']（共2只）
+
+## 问题：
+1. 股池读取错误，改为9:28再读取； 
+2. 卖出挂单失败，需要debug，当前日志中显示只卖出了2股，可能是代码计算的手数当成了卖出的股数，改为以股数卖出。 
+3. check_position_status 函数debug功能； 
+4. 第二天卖出的时间改为9:26挂卖出单； 
+5. 去除全天监控是否卖出的逻辑，只在尾盘竞价前执行检查卖出情况和撤单逻辑；
+
+6. 次日判断（只挂前一天买入的票）；
+7. 撤单功能：14:55 直接查询全部委托列表，按「当前持仓代码 + 状态=未成/部成」来撤单
+
+---
+
+# 11月19日 
+
+## 日志：
+
+[2025-11-19 09:40:37][新建策略文件][SH000300][1分钟] 0D:\国投核心客户极速策略交易终端（ACT）\python\新建策略文件.py_000300129: 策略停止
+[2025-11-19 09:40:38][新建策略文件][SH000300][1分钟] [trade]start trading mode
+[2025-11-19 09:40:38][新建策略文件][SH000300][1分钟] ================================================================================
+【实盘买入策略启动】时间：2025-11-19 09:40:38
+配置信息：
+  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
+  - 交易账号：904800028165
+  - 买入规则：竞价价×1.02（向下取整），资金均分
+  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出
+================================================================================
+
+[2025-11-19 09:40:38][新建策略文件][SH000300][1分钟] 
+========================================
+早盘卖出流程启动  时间：09:40:38
+========================================
+
+【查询当前持仓】账号：904800028165
+ 当前持仓：['600829.SH', '002083.SZ']（共2只）
+【早盘卖出】600829.SH 基准价=17.72 * 1.091 -> 卖出价=19.33元
+
+【卖出挂单】股票：600829.SH | 价格=19.33元 | 股数=200
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM583426
+ 卖出挂单成功 | 委托ID=MM583426
+【早盘卖出】002083.SZ 基准价=12.46 * 1.091 -> 卖出价=13.59元
+
+【卖出挂单】股票：002083.SZ | 价格=13.59元 | 股数=600
+【获取最新委托ID】账号：904800028165
+
+[2025-11-19 09:40:38][新建策略文件][SH000300][1分钟]  成功获取最新委托ID：MM583426
+ 卖出挂单成功 | 委托ID=MM583426
+【早盘卖出】批量挂单结束
+
+## 问题：
+
+1. 卖出价格应该基于last close计算涨停价格，而不是开盘价。（已修复）
+2. 9:28 买入时，MongoDB数据依然错误，直到29:xx，才买入新股；
+
