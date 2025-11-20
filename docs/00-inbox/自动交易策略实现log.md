@@ -1,17 +1,4 @@
-自动交易策略流程图：
-
-1. 读取MongoDB篮子股票信息；
-2. 计算每个股票的买单信息：按价格买入（1102），计算买入价格（竞价末尾位置的1.02，向下取整）；
-3. 挂单；
-4. 检查委托列表，判断是否成功挂单；
-5. 检查买入列表，判断是否成功买入；
-
-6. 卖出逻辑：第二天早盘9：30开始挂出卖单，按开盘价格 * 1.091卖出；下午2:55检查是否完成卖出，如果没卖出，撤单，2:57尾盘竞价开始时，挂跌停价卖出；
-
-#########################################################################################################################
-
 ``` python 
-
 #coding:gbk
 from datetime import datetime
 import math
@@ -43,6 +30,9 @@ DEBUG_FORCE_MORNING_SELL   = False   # True 时忽略时间条件，强制执行
 DEBUG_FORCE_CANCEL_SELL    = False   # True 时忽略时间条件，强制执行 14:55 撤单
 DEBUG_FORCE_AFTERNOON_SELL = False   # True 时忽略时间条件，强制执行尾盘卖出
 DEBUG_FORCE_AUCTION_BUY    = False   # True 时忽略时间条件，强制执行竞价买入
+
+AUCTION_BUY_CODES = set()      # 例如 {'001216', '000632', ...}
+AUCTION_CANCEL_DONE = False    # 是否已经跑过一次竞价买入撤单
 
 def log_block(title):
     print("\n" + "=" * 40)
@@ -437,43 +427,43 @@ def check_order_status(stock_code, expected_price, expected_lots):
         print(f" 委托状态查询异常：{str(e)}")
         return False
 
-def check_position_status(stock_code, expected_lots):
-    """检查持仓状态（判断是否成功买入，expected_lots 实际为股数）"""
-    try:
-        print(f"\n【持仓状态检查】股票：{stock_code}")
-        position_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "position")
+# def check_position_status(stock_code, expected_lots):
+#     """检查持仓状态（判断是否成功买入，expected_lots 实际为股数）"""
+#     try:
+#         print(f"\n【持仓状态检查】股票：{stock_code}")
+#         position_data = get_trade_detail_data(TRADE_ACCOUNT, "stock", "position")
         
-        if not isinstance(position_data, list) or len(position_data) == 0:
-            print(f" 未查询到持仓记录")
-            return False
+#         if not isinstance(position_data, list) or len(position_data) == 0:
+#             print(f" 未查询到持仓记录")
+#             return False
         
-        target_position = None
-        # 注意：这里传进来的 expected_lots 实际就是“股数”（已经是 100 的整数倍）
-        expected_shares = expected_lots
-        pure_code = stock_code.split('.')[0]  # 新增：去掉 .SH/.SZ 后缀
-        for pos in position_data:
-            # 优先用API标准字段m_strInstrumentID匹配
-            pos_stock_code = pos.m_strInstrumentID if hasattr(pos, "m_strInstrumentID") else pos.m_strStockCode
-            if (pos_stock_code == pure_code and
-                hasattr(pos, "m_nVolume") and pos.m_nVolume >= expected_shares):
-                target_position = pos
-                break
+#         target_position = None
+#         # 注意：这里传进来的 expected_lots 实际就是“股数”（已经是 100 的整数倍）
+#         expected_shares = expected_lots
+#         pure_code = stock_code.split('.')[0]  # 新增：去掉 .SH/.SZ 后缀
+#         for pos in position_data:
+#             # 优先用API标准字段m_strInstrumentID匹配
+#             pos_stock_code = pos.m_strInstrumentID if hasattr(pos, "m_strInstrumentID") else pos.m_strStockCode
+#             if (pos_stock_code == pure_code and
+#                 hasattr(pos, "m_nVolume") and pos.m_nVolume >= expected_shares):
+#                 target_position = pos
+#                 break
         
-        if target_position:
-            cost_price = target_position.m_dOpenPrice if hasattr(target_position, "m_dOpenPrice") else 0.0
-            print(f" 买入成功：{stock_code} | 持仓{target_position.m_nVolume}股 | 成本{cost_price:.2f}元")
-            return True
+#         if target_position:
+#             cost_price = target_position.m_dOpenPrice if hasattr(target_position, "m_dOpenPrice") else 0.0
+#             print(f" 买入成功：{stock_code} | 持仓{target_position.m_nVolume}股 | 成本{cost_price:.2f}元")
+#             return True
 
-        else:
-            print(f" 未找到目标持仓")
-            return False
+#         else:
+#             print(f" 未找到目标持仓")
+#             return False
         
     
-    except Exception as e:
-        print(f" 持仓状态查询异常：{str(e)}")
-        return False
+#     except Exception as e:
+#         print(f" 持仓状态查询异常：{str(e)}")
+#         return False
 
-    return False
+#     return False
 
 def run_morning_sell(ContextInfo, current_date):
     """早盘卖出流程：按开盘价 * 1.091 卖出前一日及更早的持仓"""
@@ -521,6 +511,79 @@ def run_morning_sell(ContextInfo, current_date):
 
     print("【早盘卖出】批量挂单结束")
 
+def run_cancel_auction_buys(ContextInfo):
+    # TODO 是按查询撤单还是按记录撤单？
+    """9:30 后 3 分钟内：撤销未成交的竞价买入委托"""
+    log_block("竞价买入撤单流程启动")
+
+    # 今日没有记录任何策略竞价买入标的，直接退出
+    if not AUCTION_BUY_CODES:
+        print("【竞价撤单】今日无策略竞价买入记录，跳过")
+        return False
+
+    order_list = get_trade_detail_data(TRADE_ACCOUNT, "stock", "order")
+    if not isinstance(order_list, list) or len(order_list) == 0:
+        print("【竞价撤单】未查询到任何委托记录")
+        return False
+
+    # 可撤状态：已报 / 已报待撤 / 部分成交
+    cancellable_status = {50, 51, 55}
+    cancelled_any = False
+
+    for order in order_list:
+        # 提取股票代码
+        order_code = None
+        if hasattr(order, "m_strInstrumentID"):
+            order_code = normalize_code(order.m_strInstrumentID)
+        elif hasattr(order, "m_strStockCode"):
+            order_code = normalize_code(order.m_strStockCode)
+
+        if not order_code:
+            continue
+
+        # 只处理“本策略竞价买入过的标的”
+        if order_code not in AUCTION_BUY_CODES:
+            continue
+
+        # 只处理“买入方向”的委托：OptName 里包含“买”
+        opt_name = getattr(order, "m_strOptName", "")
+        if not isinstance(opt_name, str):
+            opt_name = str(opt_name or "")
+
+        if "买" not in opt_name:
+            continue
+
+        status = getattr(order, "m_nOrderStatus", None)
+        if status not in cancellable_status:
+            # 这里说明要么已完全成交、要么已经撤/废，跳过就行
+            continue
+
+        # 获取委托 ID
+        order_id = None
+        if hasattr(order, "m_strOrderSysID") and order.m_strOrderSysID:
+            order_id = order.m_strOrderSysID
+        elif hasattr(order, "m_strOrderID") and order.m_strOrderID:
+            order_id = order.m_strOrderID
+
+        if not order_id:
+            print(f"【竞价撤单】找不到可用委托ID，股票={order_code}，opt={opt_name}，status={status}，跳过")
+            continue
+
+        print(f"【竞价撤单】准备撤单 | code={order_code} | opt={opt_name} | status={status} | order_id={order_id}")
+        can_cancel = can_cancel_order(order_id, TRADE_ACCOUNT, 'stock')
+        print(f"  can_cancel: {can_cancel}")
+        if can_cancel:
+            cancel_order(ContextInfo, order_id, order_code)
+            cancelled_any = True
+
+    if cancelled_any:
+        print("【竞价撤单】未成交/部分成交的竞价买入委托已尝试撤单完毕")
+    else:
+        print("【竞价撤单】没有需要撤的竞价买入委托")
+
+    return cancelled_any
+
+
 
 def run_cancel_open_sells(ContextInfo):
     """尾盘前撤销未成交的卖出委托"""
@@ -531,6 +594,7 @@ def run_cancel_open_sells(ContextInfo):
         print("【撤单】当前无持仓，跳过撤单")
         return
 
+    # 当前持仓对应的纯代码集合，例如：{'600000', '000001', ...}
     holding_codes = {h["pure_code"] for h in holdings}
 
     order_list = get_trade_detail_data(TRADE_ACCOUNT, "stock", "order")
@@ -538,10 +602,11 @@ def run_cancel_open_sells(ContextInfo):
         print("【撤单】无委托记录可撤")
         return
 
-    cancellable_status = {50, 51, 55}  # 已报 / 已报待撤 / 部分成交
+    # 可撤状态：已报 / 已报待撤 / 部分成交
+    cancellable_status = {50, 51, 55}
 
     for order in order_list:
-        # 提取股票代码
+        # 1) 提取股票代码，并与当前持仓匹配
         order_code = None
         if hasattr(order, "m_strInstrumentID"):
             order_code = normalize_code(order.m_strInstrumentID)
@@ -551,29 +616,41 @@ def run_cancel_open_sells(ContextInfo):
         if not order_code or order_code not in holding_codes:
             continue
 
-        # 只处理卖出方向（1=买, 2=卖；如与你环境不符，改这里）
-        order_side = getattr(order, "m_nDirection", None)
-        if order_side is not None and order_side != 2:
+        # 2) 用 m_strOptName 判断是否为“卖出”委托
+        # 实测值：order.m_strOptName = "限价卖出"
+        opt_name = getattr(order, "m_strOptName", "")
+        if not isinstance(opt_name, str):
+            opt_name = str(opt_name or "")
+
+        # 只处理“卖出”方向的委托：包含“卖”即可（兼容将来可能出现的其他卖出类型）
+        if "卖" not in opt_name:
             continue
 
+        # 3) 只撤“可撤状态”的委托
         status = getattr(order, "m_nOrderStatus", None)
         if status not in cancellable_status:
+            # 调试时可以打开下面一行，看有哪些状态被跳过
+            # print(f"[撤单跳过] code={order_code}, opt={opt_name}, status={status}")
             continue
 
-        # 提取委托ID（字段名按实际环境调整）
+        # 4) 提取委托 ID（你确认过 m_strOrderSysID 可用）
         order_id = None
-        if hasattr(order, "m_strOrderID"):
-            order_id = order.m_strOrderID
-        elif hasattr(order, "m_strOrderSysID"):
+        if hasattr(order, "m_strOrderSysID") and order.m_strOrderSysID:
             order_id = order.m_strOrderSysID
+        elif hasattr(order, "m_strOrderID") and order.m_strOrderID:
+            order_id = order.m_strOrderID
 
         if not order_id:
-            print(f"【撤单】找不到可用委托ID，股票={order_code}，跳过")
+            print(f"【撤单】找不到可用委托ID，股票={order_code}，opt={opt_name}，跳过")
             continue
 
+        print(f"【撤单】准备撤单 | code={order_code} | opt={opt_name} | status={status} | order_id={order_id}")
+        can_cancel = can_cancel_order(order_id, TRADE_ACCOUNT, 'stock')
+        print(f"can_cancel: {can_cancel}")
         cancel_order(ContextInfo, order_id, order_code)
 
     print("【撤单】尾盘撤单流程完成")
+
 
 
 def run_afternoon_sell(ContextInfo):
@@ -602,6 +679,8 @@ def run_afternoon_sell(ContextInfo):
 
 def run_auction_buy(ContextInfo):
     """竞价买入流程：9:28-9:30 读取 Mongo 股池并按竞价价买入"""
+    global AUCTION_BUY_CODES
+    
     log_block("竞价买入流程启动")
 
     # 1. 读取MongoDB股票篮子
@@ -627,15 +706,10 @@ def run_auction_buy(ContextInfo):
         # 挂单
         if not place_order(ContextInfo, stock_code, buy_price, lots):
             continue
-        
-        # 等待数据同步
-        time.sleep(SYNC_DELAY)
-        
-        # 检查委托状态
-        if check_order_status(stock_code, buy_price, lots):
-            # 检查持仓状态（可选）
-            check_position_status(stock_code, lots)
-        
+
+        # 记录：这是今天策略用于竞价买入的标的
+        AUCTION_BUY_CODES.add(normalize_code(stock_code))
+
         # 每只股票操作后间隔1秒，避免请求过于频繁
         time.sleep(1)
     
@@ -644,18 +718,86 @@ def run_auction_buy(ContextInfo):
 
 
 # ===================== 5. QMT策略核心函数 =====================
+def timer_morning_sell(ContextInfo):
+    """每天固定时间触发：早盘卖出"""
+    global MORNING_SOLD
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    print("[TIMER] timer_morning_sell fired")
+    run_morning_sell(ContextInfo, current_date)
+    MORNING_SOLD = True
+
+
+def timer_auction_buy(ContextInfo):
+    """每天固定时间触发：竞价买入"""
+    global IS_TRADED
+    print("[TIMER] timer_auction_buy fired")
+    if not IS_TRADED:
+        run_auction_buy(ContextInfo)
+        # 不管成功与否，只要尝试过竞价买入，就视为已执行
+        IS_TRADED = True
+
+
+def timer_cancel_auction_buys(ContextInfo):
+    """每天固定时间触发：对竞价买入的未成交委托做统一撤单"""
+    global AUCTION_CANCEL_DONE
+    print("[TIMER] timer_cancel_auction_buys fired")
+
+    if AUCTION_CANCEL_DONE:
+        print("【竞价撤单】已执行过，跳过")
+        return
+
+    # 只有今天触发过竞价买入，才有必要撤单
+    if IS_TRADED:
+        run_cancel_auction_buys(ContextInfo)
+    else:
+        print("【竞价撤单】今日未执行竞价买入(IS_TRADED=False)，跳过撤单")
+
+    AUCTION_CANCEL_DONE = True
+
+
+def timer_cancel_open_sells(ContextInfo):
+    """每天固定时间触发：14:55 撤销未成交的卖出委托"""
+    global CANCEL_DONE
+    print("[TIMER] timer_cancel_open_sells fired")
+
+    # 只有早盘卖出触发过（说明有卖单），才有必要跑这一步
+    if CANCEL_DONE:
+        print("【撤单】已执行过，跳过")
+        return
+
+    run_cancel_open_sells(ContextInfo)
+    CANCEL_DONE = True
+
+
+def timer_afternoon_sell(ContextInfo):
+    """每天固定时间触发：14:57 尾盘一键卖出所有持仓"""
+    global AFTERNOON_SOLD
+    print("[TIMER] timer_afternoon_sell fired")
+
+    if AFTERNOON_SOLD:
+        print("【尾盘卖出】已执行过，跳过")
+        return
+
+    run_afternoon_sell(ContextInfo)
+    AFTERNOON_SOLD = True
+
+# === init & handlebar===
 def init(ContextInfo):
     """策略初始化（仅执行一次）"""
     global IS_TRADED, MORNING_SOLD, AFTERNOON_SOLD, CANCEL_DONE
+    global AUCTION_BUY_CODES, AUCTION_CANCEL_DONE
+
     IS_TRADED = False
     MORNING_SOLD = False
     AFTERNOON_SOLD = False
     CANCEL_DONE = False
-    
+    AUCTION_BUY_CODES = set()
+    AUCTION_CANCEL_DONE = False
+
     # 绑定交易账号
     ContextInfo.accID = TRADE_ACCOUNT
     ContextInfo.set_account(TRADE_ACCOUNT)
-    
+
     print("="*80)
     print(f"【实盘买入策略启动】时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"配置信息：")
@@ -665,47 +807,28 @@ def init(ContextInfo):
     print(f"  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出")
     print("="*80)
 
+    # ---------- 用 run_time 注册定时任务 ----------
+    today = datetime.now().strftime("%Y-%m-%d")
+    one_day = "1nDay"      # 每 1 天执行一次
+
+    # 1) 早盘卖出
+    ContextInfo.run_time("timer_morning_sell", one_day, f"{today} 09:25:00", "SH")
+
+    # 2) 竞价买入
+    ContextInfo.run_time("timer_auction_buy", one_day, f"{today} 09:27:30", "SH")
+
+    # 3) 竞价买入撤单
+    ContextInfo.run_time("timer_cancel_auction_buys", one_day, f"{today} 09:35:00", "SH")
+
+    # 4) 撤销未成交卖出委托
+    ContextInfo.run_time("timer_cancel_open_sells", one_day, f"{today} 14:56:00", "SH")
+
+    # 5) 跌停价强制卖出全部持仓
+    ContextInfo.run_time("timer_afternoon_sell", one_day, f"{today} 14:57:00", "SH")
+
+
 def handlebar(ContextInfo):
-    """策略循环执行：负责按时间窗口调度各个流程"""
-    global IS_TRADED, MORNING_SOLD, AFTERNOON_SOLD, CANCEL_DONE
-    current_time = datetime.now().strftime("%H:%M:%S")
-    current_date = datetime.now().strftime("%Y-%m-%d")
-
-    # 1. 早盘卖出（第二天 9:26-9:26:30，仅执行一次，或 debug 强制执行）
-    if ((DEBUG_FORCE_MORNING_SELL and not MORNING_SOLD) or
-        (not MORNING_SOLD and "09:26:00" <= current_time <= "09:45:30")):
-        run_morning_sell(ContextInfo, current_date)
-        MORNING_SOLD = True
-        return
-
-    # 2. 尾盘前撤单（14:55-14:55:30，仅执行一次，或 debug 强制执行）
-    if ((DEBUG_FORCE_CANCEL_SELL and not CANCEL_DONE) or
-        (MORNING_SOLD and not AFTERNOON_SOLD and not CANCEL_DONE and
-         "14:55:00" <= current_time <= "14:55:30")):
-        run_cancel_open_sells(ContextInfo)
-        CANCEL_DONE = True
-        return
-
-    # 3. 尾盘卖出（14:57-14:57:30，仅执行一次，或 debug 强制执行）
-    if ((DEBUG_FORCE_AFTERNOON_SELL and not AFTERNOON_SOLD) or
-        (not AFTERNOON_SOLD and "14:57:00" <= current_time <= "14:57:30")):
-        run_afternoon_sell(ContextInfo)
-        AFTERNOON_SOLD = True
-        return
-
-    # 4. 竞价买入（9:27:30-9:30，仅执行一次，或 debug 强制执行）
-    if ((DEBUG_FORCE_AUCTION_BUY and not IS_TRADED) or
-        (not IS_TRADED and "09:27:30" <= current_time <= "09:30:00")):
-        try:
-            traded = run_auction_buy(ContextInfo)
-            # 不管成功与否，只要进过一次流程，就视为“本日已尝试过”，避免重复
-            IS_TRADED = True
-        except Exception as e:
-            print(f"\n[ERROR] 竞价买入流程异常：{str(e)}")
-            IS_TRADED = True  # 避免异常后重复执行
-        return
-
-
+    pass
 
 def stop(ContextInfo):
     """策略停止"""
@@ -716,6 +839,16 @@ def stop(ContextInfo):
     print("="*80)
 
 ```
+
+自动交易策略流程图：
+
+1. 读取MongoDB篮子股票信息；
+2. 计算每个股票的买单信息：按价格买入（1102），计算买入价格（竞价末尾位置的1.02，向下取整）；
+3. 挂单；
+4. 检查委托列表，判断是否成功挂单；
+5. 检查买入列表，判断是否成功买入；
+
+6. 卖出逻辑：第二天早盘9：30开始挂出卖单，按开盘价格 * 1.091卖出；下午2:55检查是否完成卖出，如果没卖出，撤单，2:57尾盘竞价开始时，挂跌停价卖出；
 
 
 
@@ -1102,4 +1235,105 @@ float(lots): 200.0
 
 1. 卖出价格应该基于last close计算涨停价格，而不是开盘价。（已修复）
 2. 9:28 买入时，MongoDB数据依然错误，直到29:xx，才买入新股；
+3. *卖出撤单失败，测试撤单
 
+
+order 字段：['-1', '0', '1', '101', '107', '108', '109', '110', '111', '112', '113', '114', '2', '255', '32', '48', '49', '50', '51', '52', '53', '54', '55', '56', '57', '58', '59', '60', '61', '66', '67', '68', '69', '70', '71', '72', '73', '75', '77', '78', '79', '80', '81', '83', '84', '85', '86', '87', '88', '89', '90', '91', '92', '93', '94', 'EBrokerPriceType', 'ECoveredFlag', 'EEntrustBS', 'EEntrustStatus', 'EEntrustSubmitStatus', 'EEntrustTypes', 'EFutureTradeType', 'EHedge_Flag_Type', 'EOffset_Flag_Type', 'ESideFlag', 'EXTCompactBrushSource', 'EXTCompactStatus', 'EXTCompactType', 'EXTSloTypeQueryMode', 'EXTSubjectsStatus', '__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__instance_size__', '__le__', '__lt__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '__weakref__', 'j', 'm_bEnable', 'm_dCancelAmount', 'm_dFrozenCommission', 'm_dFrozenMargin', 'm_dLimitPrice', 'm_dOrderPriceRMB', 'm_dReferenceRate', 'm_dShortOccupedMargin', 'm_dTradeAmount', 'm_dTradeAmountRMB', 'm_dTradedPrice', 'm_eCashgroupProp', 'm_eCoveredFlag', 'm_eEntrustType', 'm_nDirection', 'm_nErrorID', 'm_nFrontID', 'm_nGroupId', 'm_nHedgeFlag', 'm_nOffsetFlag', 'm_nOpType', 'm_nOrderPriceType', 'm_nOrderStatus', 'm_nOrderStrategyType', 'm_nOrderSubmitStatus', 'm_nRef', 'm_nSessionID', 'm_nStrategyID', 'm_nTaskId', 'm_nVolumeTotal', 'm_nVolumeTotalOriginal', 'm_nVolumeTraded', 'm_strAccountID', 'm_strAccountKey', 'm_strAccountName', 'm_strAccountRemark', 'm_strBrokerName', 'm_strCancelInfo', 'm_strCompactNo', 'm_strErrorMsg', 'm_strExchangeID', 'm_strExchangeName', 'm_strInsertDate', 'm_strInsertTime', 'm_strInstrumentID', 'm_strInstrumentName', 'm_strLocalInfo', 'm_strOptName', 'm_strOption', 'm_strOrderParam', 'm_strOrderRef', 'm_strOrderStrategyType', 'm_strOrderSysID', 'm_strProductID', 'm_strProductName', 'm_strRemark', 'm_strSource', 'm_strUnderCode', 'm_strXTTrade', 'm_xtTag', 'w', 'x', 'y', 'z']
+
+
+order.m_nDirection:48
+order.m_strOptName:限价卖出
+order.m_nOrderStatus:54
+order.m_strOrderSysID:MM582811
+
+
+---
+
+# 11月20日
+
+## 日志：
+
+
+[2025-11-20 09:06:00][新建策略文件][SH000300][1分钟] [trade]start trading mode
+[2025-11-20 09:06:00][新建策略文件][SH000300][1分钟] ================================================================================
+【实盘买入策略启动】时间：2025-11-20 09:06:00
+配置信息：
+  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
+  - 交易账号：904800028165
+  - 买入规则：竞价价×1.02（向下取整），资金均分
+  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出
+================================================================================
+
+[2025-11-20 09:28:01][新建策略文件][SH000300][1分钟] 
+========================================
+竞价买入流程启动  时间：09:28:01
+========================================
+
+【MongoDB查询】时间：2025-11-20 09:28:01（重试1/18）
+
+[2025-11-20 09:28:01][新建策略文件][SH000300][1分钟]  获取今日股票篮子：['001216.SZ', '000632.SZ', '002474.SZ']（共3只）
+
+【资金查询】账号：904800028165
+ 可用资金：9086.65元
+ 单只股票可用资金：3019.80元（含手续费预留）
+
+【竞价价格查询】股票：001216.SZ
+集合竞价数据-001216.SZ：开盘价=22.150000000000002, 最新价=22.150000000000002 成交量=48574, 成交额=107591400.0
+ 集合竞价价格：22.15元
+ 买入参数：001216.SZ | 价格22.59元 | 100股
+
+【竞价价格查询】股票：000632.SZ
+集合竞价数据-000632.SZ：开盘价=6.8, 最新价=6.8 成交量=551931, 成交额=375313200.0
+ 集合竞价价格：6.80元
+ 买入参数：000632.SZ | 价格6.93元 | 400股
+
+【竞价价格查询】股票：002474.SZ
+集合竞价数据-002474.SZ：开盘价=11.1, 最新价=11.1 成交量=96660, 成交额=107292600.0
+ 集合竞价价格：11.10元
+ 买入参数：002474.SZ | 价格11.32元 | 200股
+
+[买入流程] 001216.SZ | 目标价=22.59 | lots=100
+
+【挂单操作】股票：001216.SZ
+ 挂单请求发送成功：001216.SZ | 价格22.59元 | 100手
+
+[2025-11-20 09:28:04][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：001216.SZ
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM889936
+ 委托校验通过 | 委托ID=MM889936 | 状态=已报（等待成交） | 股票=001216 | 价格=22.59元 | 手数=100
+
+【持仓状态检查】股票：001216.SZ
+ 未找到目标持仓
+
+[2025-11-20 09:28:05][新建策略文件][SH000300][1分钟] 
+[买入流程] 000632.SZ | 目标价=6.93 | lots=400
+
+【挂单操作】股票：000632.SZ
+ 挂单请求发送成功：000632.SZ | 价格6.93元 | 400手
+
+[2025-11-20 09:28:08][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：000632.SZ
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM889938
+ 委托校验通过 | 委托ID=MM889938 | 状态=已报（等待成交） | 股票=000632 | 价格=6.93元 | 手数=400
+
+【持仓状态检查】股票：000632.SZ
+ 未找到目标持仓
+
+[2025-11-20 09:28:09][新建策略文件][SH000300][1分钟] 
+[买入流程] 002474.SZ | 目标价=11.32 | lots=200
+
+【挂单操作】股票：002474.SZ
+ 挂单请求发送成功：002474.SZ | 价格11.32元 | 200手
+
+[2025-11-20 09:28:12][新建策略文件][SH000300][1分钟] 
+【委托状态检查】股票：002474.SZ
+【获取最新委托ID】账号：904800028165
+ 成功获取最新委托ID：MM889942
+ 委托校验通过 | 委托ID=MM889942 | 状态=已报（等待成交） | 股票=002474 | 价格=11.32元 | 手数=200
+
+【持仓状态检查】股票：002474.SZ
+ 未找到目标持仓
+
+[2025-11-20 09:28:13][新建策略文件][SH000300][1分钟] 【竞价买入】所有股票买入流程结束
