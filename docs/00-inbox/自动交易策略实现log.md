@@ -1337,3 +1337,150 @@ order.m_strOrderSysID:MM582811
  未找到目标持仓
 
 [2025-11-20 09:28:13][新建策略文件][SH000300][1分钟] 【竞价买入】所有股票买入流程结束
+
+---
+
+# 11月28日
+
+## 日志
+
+
+[2025-11-28 09:24:37][新建策略文件][SH000300][1分钟] [trade]start trading mode
+[2025-11-28 09:24:37][新建策略文件][SH000300][1分钟] ================================================================================
+【实盘买入策略启动】时间：2025-11-28 09:24:37
+配置信息：
+  - MongoDB：192.168.1.142:27017/?authSource=stock/stock/ths_realtime_stocks
+  - 交易账号：904800028165
+  - 买入规则：竞价价×1.02（向下取整），资金均分
+  - 卖出规则：次日9:30开盘价×1.091挂单，14:55未卖撤单，14:57跌停价卖出
+================================================================================
+
+[2025-11-28 09:25:00][新建策略文件][SH000300][1分钟] [TIMER] timer_morning_sell fired
+
+========================================
+早盘卖出流程启动  时间：09:25:00
+========================================
+
+【查询当前持仓】账号：904800028165
+ 当前持仓：['000859.SZ', '301638.SZ']（共2只）
+【早盘卖出】000859.SZ 基准价=8.47 * 1.091 -> 卖出价=9.24元
+
+【卖出挂单】股票：000859.SZ | 价格=9.24元 | 股数=900
+【获取最新委托ID】账号：904800028165
+ 未获取到最新委托ID（返回值：-1）
+ 卖出挂单成功，但未获取到委托ID
+【早盘卖出】301638.SZ 基准价=25.75 * 1.191 -> 卖出价=30.66元
+
+【卖出挂单】股票：301638.SZ | 价格=30.66元 | 股数=300
+【获取最新委托ID】账号：904800028165
+ 未获取到最新委托ID（返回值：-1）
+ 卖出挂单成功，但未获取到委托ID
+【早盘卖出】批量挂单结束
+
+[2025-11-28 09:27:30][新建策略文件][SH000300][1分钟] [TIMER] timer_auction_buy fired
+
+========================================
+竞价买入流程启动  时间：09:27:30
+========================================
+
+【MongoDB查询】时间：2025-11-28 09:27:30（重试1/18）
+
+[2025-11-28 09:27:35][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fa821c85d8bff8680528, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:27:45][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:27:45（重试2/18）
+
+[2025-11-28 09:27:50][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fa911c85d8bff8680529, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:28:00][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:28:00（重试3/18）
+
+[2025-11-28 09:28:05][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928faa01c85d8bff868052a, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:28:15][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:28:15（重试4/18）
+
+[2025-11-28 09:28:21][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928faaf1c85d8bff868052b, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:28:31][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:28:31（重试5/18）
+
+[2025-11-28 09:28:36][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fabf1c85d8bff868052c, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:28:46][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:28:46（重试6/18）
+
+[2025-11-28 09:28:51][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928face1c85d8bff868052d, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:29:01][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:29:01（重试7/18）
+
+[2025-11-28 09:29:06][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fadd1c85d8bff868052e, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:29:16][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:29:16（重试8/18）
+
+[2025-11-28 09:29:22][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928faec1c85d8bff868052f, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:29:32][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:29:32（重试9/18）
+
+[2025-11-28 09:29:37][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fafc1c85d8bff8680530, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:29:47][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:29:47（重试10/18）
+
+[2025-11-28 09:29:52][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb0b1c85d8bff8680531, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:30:02][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:30:02（重试11/18）
+
+[2025-11-28 09:30:08][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb1a1c85d8bff8680532, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:30:18][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:30:18（重试12/18）
+
+[2025-11-28 09:30:23][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb2a1c85d8bff8680533, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:30:33][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:30:33（重试13/18）
+
+[2025-11-28 09:30:38][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb391c85d8bff8680534, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:30:48][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:30:48（重试14/18）
+
+[2025-11-28 09:30:54][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb481c85d8bff8680535, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:31:04][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:31:04（重试15/18）
+
+[2025-11-28 09:31:09][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb581c85d8bff8680536, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:31:19][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:31:19（重试16/18）
+
+[2025-11-28 09:31:24][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb671c85d8bff8680537, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:31:34][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:31:34（重试17/18）
+
+[2025-11-28 09:31:39][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb761c85d8bff8680538, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:31:49][新建策略文件][SH000300][1分钟] 
+【MongoDB查询】时间：2025-11-28 09:31:49（重试18/18）
+
+[2025-11-28 09:31:55][新建策略文件][SH000300][1分钟] 获取股票篮子失败：No servers found yet, Timeout: 5.0s, Topology Description: <TopologyDescription id: 6928fb851c85d8bff8680539, topology_type: Single, servers: [<ServerDescription ('192.168.1.142', 27017) server_type: Unknown, rtt: None>]>，10秒后重试
+
+[2025-11-28 09:32:05][新建策略文件][SH000300][1分钟] 所有重试失败，未找到今日股票篮子
+【竞价买入】MongoDB 未返回股票篮子，本日不再尝试
+
+[2025-11-28 09:35:00][新建策略文件][SH000300][1分钟] [TIMER] timer_cancel_auction_buys fired
+
+========================================
+竞价买入撤单流程启动  时间：09:35:00
+========================================
+【竞价撤单】今日无策略竞价买入记录，跳过
+
+## 问题
+1. mongodb的链接是局域网，在我的台式机上无法连接，导致股票获取失败；
