@@ -922,6 +922,7 @@ def handlebar(ContextInfo):
             print(f"【止损触发】{stock_code} 当前价={last_price:.2f} 低于昨收-2%({stop_loss_price:.2f})，执行撤单+按卖一价卖出")
 
             # 3.1 撤销该股票所有“可撤的卖出委托”
+            cancelled_any = False
             if pure_code in sell_orders_by_code:
                 for order in sell_orders_by_code[pure_code]:
                     # 提取委托ID
@@ -939,8 +940,12 @@ def handlebar(ContextInfo):
                     if can_cancel:
                         print(f"【止损撤单】{stock_code} 撤销委托 order_id={order_id}")
                         cancel_order(ContextInfo, order_id, pure_code)
+                        cancelled_any = True
                     else:
                         print(f"【止损撤单】{stock_code} 委托不可撤（order_id={order_id}），可能已成/已撤/废单")
+
+            if cancelled_any:
+                time.sleep(1)
 
             # 3.2 使用 get_sell1_price 获取当前“卖一价”，按卖一价挂单卖出全部持仓
             sell1 = get_sell1_price(ContextInfo, stock_code)
