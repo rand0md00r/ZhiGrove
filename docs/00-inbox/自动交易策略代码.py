@@ -921,28 +921,41 @@ def handlebar(ContextInfo):
             # ---- 跌破止损线：撤单 + 按卖一价卖出 ----
             print(f"【止损触发】{stock_code} 当前价={last_price:.2f} 低于昨收-2%({stop_loss_price:.2f})，执行撤单+按卖一价卖出")
 
-            # 3.1 撤销该股票所有“可撤的卖出委托”
+            # 3.1 撤销“当前刚触发止损的这只股票”的卖出委托
             cancelled_any = False
-            if pure_code in sell_orders_by_code:
-                for order in sell_orders_by_code[pure_code]:
-                    # 提取委托ID
-                    order_id = None
-                    if hasattr(order, "m_strOrderSysID") and order.m_strOrderSysID:
-                        order_id = order.m_strOrderSysID
-                    elif hasattr(order, "m_strOrderID") and order.m_strOrderID:
-                        order_id = order.m_strOrderID
+            stock_sell_orders = sell_orders_by_code.get(pure_code, [])
 
-                    if not order_id:
-                        print(f"【止损撤单】{stock_code} 找不到委托ID，跳过某条委托")
-                        continue
+            for order in stock_sell_orders:
+                # 再防御性确认一次代码，保证只动当前这只票
+                order_code_chk = None
+                if hasattr(order, "m_strInstrumentID"):
+                    order_code_chk = normalize_code(order.m_strInstrumentID)
+                elif hasattr(order, "m_strStockCode"):
+                    order_code_chk = normalize_code(order.m_strStockCode)
 
-                    can_cancel = can_cancel_order(order_id, TRADE_ACCOUNT, 'stock')
-                    if can_cancel:
-                        print(f"【止损撤单】{stock_code} 撤销委托 order_id={order_id}")
-                        cancel_order(ContextInfo, order_id, pure_code)
-                        cancelled_any = True
-                    else:
-                        print(f"【止损撤单】{stock_code} 委托不可撤（order_id={order_id}），可能已成/已撤/废单")
+                if order_code_chk != pure_code:
+                    # 意外混入其他股票委托，直接跳过
+                    continue
+
+                # 提取委托ID
+                order_id = None
+                if hasattr(order, "m_strOrderSysID") and order.m_strOrderSysID:
+                    order_id = order.m_strOrderSysID
+                elif hasattr(order, "m_strOrderID") and order.m_strOrderID:
+                    order_id = order.m_strOrderID
+
+                if not order_id:
+                    print(f"【止损撤单】{stock_code} 找不到委托ID，跳过某条委托")
+                    continue
+
+                can_cancel = can_cancel_order(order_id, TRADE_ACCOUNT, 'stock')
+                if can_cancel:
+                    print(f"【止损撤单】{stock_code} 撤销委托 order_id={order_id}")
+                    # 这里用带后缀的 stock_code 传给日志更直观
+                    cancel_order(ContextInfo, order_id, stock_code)
+                    cancelled_any = True
+                else:
+                    print(f"【止损撤单】{stock_code} 委托不可撤（order_id={order_id}），可能已成/已撤/废单")
 
             if cancelled_any:
                 time.sleep(1)
