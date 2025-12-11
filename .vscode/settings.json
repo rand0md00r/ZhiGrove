@@ -1,5 +1,12 @@
 {
-    "pasteImage.path": "/Users/wangyaqi/Documents/ZhiGrove/assets",
-    // "pasteImage.prefix": "./assets"
-  }
-  
+    "pasteImage.path": "${projectRoot}/docs/assets",
+    "pasteImage.basePath": "${projectRoot}/docs",
+    "pasteImage.forcePathSeparator": "/",
+    "pasteImage.prefix": "/",
+    "pasteImage.insertPattern": "![${imageSyntaxPrefix}${imageFileName}](${imageSyntaxPrefix}${imageFileName})",
+    "pasteImage.namePrefix": "${currentDate}-",
+    "pasteImage.defaultName": "image",
+    "pasteImage.dateFormat": "YYYYMMDD-HHmmss",
+    "pasteImage.showFilePathConfirmInputBox": false,
+    "editor.wordWrap": "on"
+}
