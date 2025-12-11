@@ -58,7 +58,6 @@ function walkDir(root: string, baseRoute: string, rel = ''): DefaultTheme.Sideba
 }
 
 function buildSidebar(dirName: string): DefaultTheme.SidebarItem[] {
-  // 确保路径解析正确：从 docs/.vitepress 往上走一级到 docs，再进入子目录
   const root = path.resolve(__dirname, '..', dirName)
   
   if (!fs.existsSync(root)) return []
@@ -75,10 +74,15 @@ function buildSidebar(dirName: string): DefaultTheme.SidebarItem[] {
 }
 
 export default defineConfig({
+  // --- 关键修改开始 ---
+  // 这里必须填你的 GitHub 仓库名称，前后都要有斜杠
+  // 解决了样式丢失和 404 问题
+  base: '/ZhiGrove/', 
+  // --- 关键修改结束 ---
+
   title: "ZhiGrove",
   description: "Wang Yaqi's Knowledge Base",
   
-  // 忽略死链，确保构建不中断
   ignoreDeadLinks: true,
 
   srcDir: '.', 
@@ -94,8 +98,6 @@ export default defineConfig({
       { text: '报告', link: '/50-reports/' }
     ],
 
-    // 修复点：全部使用 buildSidebar 函数自动生成侧边栏
-    // 之前报错是因为调用了未定义的 getInboxSidebar
     sidebar: {
       '/00-inbox/': buildSidebar('00-inbox'),
       '/10-knowledge/': buildSidebar('10-knowledge'),
