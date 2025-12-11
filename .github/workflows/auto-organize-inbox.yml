@@ -13,6 +13,7 @@ permissions:
 # 仅影响步骤里的本地时间显示，不影响触发时区
 env:
   TZ: Asia/Shanghai
+  INBOX_DIR: docs/00-inbox
 
 concurrency:
   group: auto-organize-inbox
@@ -49,18 +50,19 @@ jobs:
 
       - name: Create week directory
         run: |
-          week_dir="00-inbox/week-${{ steps.week_info.outputs.week_number }}"
+          week_dir="${INBOX_DIR}/week-${{ steps.week_info.outputs.week_number }}"
           mkdir -p "$week_dir"
           echo "Created directory: $week_dir"
 
       - name: List inbox files
         run: |
           echo "Files in inbox directory:"
-          ls -la 00-inbox/ || true
+          ls -la "$INBOX_DIR" || true
 
       - name: Process files with Python (Asia/Shanghai)
         env:
           WEEK_NUMBER: ${{ steps.week_info.outputs.week_number }}
+          INBOX_DIR: ${{ env.INBOX_DIR }}
         run: |
           python - <<'PY'
           import os, shutil, re
@@ -82,11 +84,14 @@ jobs:
           # 统一使用上一步算出来的周号，确保跨日无不一致
           wk = os.getenv("WEEK_NUMBER")
           current_week = int(wk) if wk else now_cn().isocalendar()[1]
-          week_dir = Path(f"00-inbox/week-{current_week:02d}")
+          inbox_dir = Path(os.getenv("INBOX_DIR", "00-inbox"))
+          inbox_dir.mkdir(parents=True, exist_ok=True)
+          week_dir = inbox_dir / f"week-{current_week:02d}"
           week_dir.mkdir(parents=True, exist_ok=True)
 
           print(f"Processing files for ISO week {current_week}")
           print("Current Beijing time:", now_cn().strftime("%Y-%m-%d %H:%M:%S %z"))
+          print("Inbox directory:", inbox_dir)
 
           def extract_time_from_content(p: Path):
               try:
@@ -133,7 +138,7 @@ jobs:
                   return n
 
           processed = 0
-          for fp in Path("00-inbox").glob("*.md"):
+          for fp in inbox_dir.glob("*.md"):
               if fp.name in {"README.md"}: 
                   print("Skip:", fp.name); continue
               if fp.name.startswith("week-"): 
@@ -179,4 +184,4 @@ jobs:
           echo "Inbox auto-organization complete!"
           echo "Week: ${{ steps.week_info.outputs.week_number }}"
           echo "Beijing date (at run): ${{ steps.week_info.outputs.current_date }}"
-          echo "Directory: 00-inbox/week-${{ steps.week_info.outputs.week_number }}"
+          echo "Directory: ${INBOX_DIR}/week-${{ steps.week_info.outputs.week_number }}"
