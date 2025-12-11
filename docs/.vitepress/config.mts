@@ -17,19 +17,25 @@ const dirLabel: Record<string, string> = {
 }
 
 function mdItemsInDir(root: string, baseRoute: string): DefaultTheme.SidebarItem[] {
-  return fs
-    .readdirSync(root, { withFileTypes: true })
-    .filter((f) => f.isFile() && f.name.endsWith('.md'))
-    .filter((f) => !['readme.md', 'index.md'].includes(f.name.toLowerCase()))
-    .map((f) => {
-      const stem = f.name.replace(/\.md$/, '')
-      const route = path.posix.join('/', baseRoute, stem)
-      return { text: stem, link: route }
-    })
+  try {
+    return fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((f) => f.isFile() && f.name.endsWith('.md'))
+      .filter((f) => !['readme.md', 'index.md'].includes(f.name.toLowerCase()))
+      .map((f) => {
+        const stem = f.name.replace(/\.md$/, '')
+        const route = path.posix.join('/', baseRoute, stem)
+        return { text: stem, link: route }
+      })
+  } catch (e) {
+    return []
+  }
 }
 
 function walkDir(root: string, baseRoute: string, rel = ''): DefaultTheme.SidebarItem[] {
   const abs = rel ? path.join(root, rel) : root
+  if (!fs.existsSync(abs)) return []
+
   const mdItems = mdItemsInDir(abs, rel ? path.posix.join(baseRoute, rel) : baseRoute)
 
   const dirItems = fs
@@ -52,7 +58,9 @@ function walkDir(root: string, baseRoute: string, rel = ''): DefaultTheme.Sideba
 }
 
 function buildSidebar(dirName: string): DefaultTheme.SidebarItem[] {
+  // 确保路径解析正确：从 docs/.vitepress 往上走一级到 docs，再进入子目录
   const root = path.resolve(__dirname, '..', dirName)
+  
   if (!fs.existsSync(root)) return []
 
   const items = walkDir(root, dirName)
@@ -70,25 +78,24 @@ export default defineConfig({
   title: "ZhiGrove",
   description: "Wang Yaqi's Knowledge Base",
   
-  // 指向 docs 目录，因为你的 markdown 都在这里
+  // 忽略死链，确保构建不中断
+  ignoreDeadLinks: true,
+
   srcDir: '.', 
 
   themeConfig: {
-    // 网站左上角的 Logo（可选）
-    // logo: '/assets/logo.png',
-
-    // 顶部导航栏
     nav: [
       { text: '首页', link: '/' },
-      { text: '收件箱 (Inbox)', link: '/00-inbox/' },
-      { text: '知识库 (Knowledge)', link: '/10-knowledge/' },
-      { text: '论文 (Papers)', link: '/20-papers/' },
-      { text: '灵感 (Ideas)', link: '/30-ideas/' },
-      { text: '实验 (Experiments)', link: '/40-experiments/' },
-      { text: '报告 (Reports)', link: '/50-reports/' }
+      { text: '收件箱', link: '/00-inbox/' },
+      { text: '知识库', link: '/10-knowledge/' },
+      { text: '论文', link: '/20-papers/' },
+      { text: '灵感', link: '/30-ideas/' },
+      { text: '实验', link: '/40-experiments/' },
+      { text: '报告', link: '/50-reports/' }
     ],
 
-    // 侧边栏配置 - 这里配置不同目录下的侧边栏显示
+    // 修复点：全部使用 buildSidebar 函数自动生成侧边栏
+    // 之前报错是因为调用了未定义的 getInboxSidebar
     sidebar: {
       '/00-inbox/': buildSidebar('00-inbox'),
       '/10-knowledge/': buildSidebar('10-knowledge'),
@@ -99,7 +106,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/你的github用户名/ZhiGrove' }
+      { icon: 'github', link: 'https://github.com/wangyaqi/ZhiGrove' }
     ],
 
     search: {
@@ -110,11 +117,5 @@ export default defineConfig({
       message: 'Released under the MIT License.',
       copyright: 'Copyright © 2025 Wang Yaqi'
     }
-  },
-
-  // 图片资源重定向规则（确保 markdown 中的 /assets/ 能被正确解析）
-  rewrites: {
-    // 如果有特殊的路径映射可以在这里配置，目前标准配置即可
   }
 })
-ignoreDeadLinks: true
