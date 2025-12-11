@@ -18,11 +18,11 @@ links: []
 ## What（是什么）
 这份清单是 `fm_transformers` 各层参数（要求梯度的 `Parameter`）的**名字→(均值, 标准差)** 快照。命名约定大致可读为：
 
-- `stages.<s>.input_layer.*` / `position_embeddings`：输入嵌入/预处理。
-- `stages.<s>.blocks.<i>.block1.*`：自注意力子层  
+- `stages.&lt;s>.input_layer.*` / `position_embeddings`：输入嵌入/预处理。
+- `stages.&lt;s>.blocks.<i>.block1.*`：自注意力子层  
   - `query_key_value.weight`：Q/K/V 合并投影  
   - `dense.(weight|bias)`：注意力输出投影
-- `stages.<s>.blocks.<i>.block2.*`：前馈网络（多见 SwiGLU/Gated 变体）  
+- `stages.&lt;s>.blocks.<i>.block2.*`：前馈网络（多见 SwiGLU/Gated 变体）  
   - `w0`/`w1`：上投影/门控支路  
   - `w2`：下投影回隐层
 - `norm.scale.*`：归一化层的缩放（γ），此实现里常以**标量对**存放（`param0/param1`），初值=1，`std=0`属正常。
@@ -79,7 +79,7 @@ stages.0.tensor_false 1.0 nan
 for n, p in self.fm_transformers.named_parameters():
     if p.requires_grad:
         print(n, p.data.mean().item(), p.data.std().item())
-<string>:3: UserWarning: std(): degrees of freedom is <= 0. Correction should be strictly less than the reduction factor (input numel divided by output numel). (Triggered internally at /pytorch/aten/src/ATen/native/ReduceOps.cpp:1831.)
+&lt;string>:3: UserWarning: std(): degrees of freedom is <= 0. Correction should be strictly less than the reduction factor (input numel divided by output numel). (Triggered internally at /pytorch/aten/src/ATen/native/ReduceOps.cpp:1831.)
 stages.0.tensor_true -1.0 nan
 stages.0.tensor_false 1.0 nan
 stages.0.input_layer.1.weight -0.000606536865234375 0.1025390625

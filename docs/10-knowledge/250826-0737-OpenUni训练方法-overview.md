@@ -44,7 +44,7 @@ arXiv
 arXiv
 
 - 提示模板与 CFG：文本到图像训练时的提示统一成
-User: Generate an image <caption>\n Assistant:，并对 10% 样本把 <caption> 置空以支持推理时的 Classifier-Free Guidance (CFG)。
+User: Generate an image &lt;caption>\n Assistant:，并对 10% 样本把 &lt;caption> 置空以支持推理时的 Classifier-Free Guidance (CFG)。
 arXiv
 
 - 模型变体：提供 B-512、L-512、L-1024 三个版本（分别对应 InternVL3-1B/2B 与 SANA-0.6B/1.6B，不同分辨率）。训练配方对三者一致。

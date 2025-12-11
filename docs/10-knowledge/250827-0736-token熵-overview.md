@@ -59,7 +59,7 @@ links: []
   Z_t=\sum_{j=1}^V \exp(\beta\, z_{t,j}).
   $$
 
-> 这里的“context$_t$”就是输入 + 先前已生成的 token 前缀 $y_{<t}$。
+> 这里的“context$_t$”就是输入 + 先前已生成的 token 前缀 $y_{&lt;t}$。
 
 ---
 

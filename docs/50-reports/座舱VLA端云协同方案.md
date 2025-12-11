@@ -31,7 +31,7 @@
 
 <a id="s0"></a>
 ## 0. 系统框图（云端主流程，按 T0 / T1 分支）
-<img width="800" height="417" alt="image" src="../assets/微信图片_20250902190851_4_51.png" />
+<img width="800" height="417" alt="image" src="/assets/微信图片_20250902190851_4_51.png" />
 
 
 ---
@@ -243,7 +243,7 @@
   - **融合与推理**：LLM 直接在上述统一序列上做自回归推理，实现端到端跨模态融合与流式生成。
 
   
-<img width="2400" height="800" alt="image" src="../assets/TMRoPE.png" />
+<img width="2400" height="800" alt="image" src="/assets/TMRoPE.png" />
 
 <a id="t1-2"></a>
 ### 4.2 特征传输（Connector）设计与训练

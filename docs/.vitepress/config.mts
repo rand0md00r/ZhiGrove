@@ -117,3 +117,4 @@ export default defineConfig({
     // 如果有特殊的路径映射可以在这里配置，目前标准配置即可
   }
 })
+ignoreDeadLinks: true
