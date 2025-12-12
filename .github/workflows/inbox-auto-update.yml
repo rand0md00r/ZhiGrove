@@ -1,0 +1,38 @@
+name: Auto Update Inbox Index
+
+on:
+  push:
+    paths:
+      - 'docs/00-inbox/**'
+    branches:
+      - main
+    # ⚠️ 重要：忽略 index.md 的变更，防止无限循环触发
+    paths-ignore:
+      - 'docs/00-inbox/index.md'
+
+jobs:
+  update-inbox:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许 Action 提交代码
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 必须抓取完整历史，否则无法获取文件修改时间
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Update Script
+        run: node scripts/update-inbox.js
+
+      - name: Commit and Push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto update inbox index [skip ci]"
+          file_pattern: docs/00-inbox/index.md
+          branch: main
