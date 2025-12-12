@@ -1,13 +1,13 @@
 name: Auto Update Inbox Index
 
 on:
+  workflow_dispatch: 
+
   push:
     branches:
       - main
     paths:
-      # 1. 包含：监听 inbox 目录下的所有文件
       - 'docs/00-inbox/**'
-      # 2. 排除：忽略 index.md，防止死循环 (注意前面的感叹号)
       - '!docs/00-inbox/index.md'
 
 jobs:
