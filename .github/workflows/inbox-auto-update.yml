@@ -2,13 +2,13 @@ name: Auto Update Inbox Index
 
 on:
   push:
-    paths:
-      - 'docs/00-inbox/**'
     branches:
       - main
-    # ⚠️ 重要：忽略 index.md 的变更，防止无限循环触发
-    paths-ignore:
-      - 'docs/00-inbox/index.md'
+    paths:
+      # 1. 包含：监听 inbox 目录下的所有文件
+      - 'docs/00-inbox/**'
+      # 2. 排除：忽略 index.md，防止死循环 (注意前面的感叹号)
+      - '!docs/00-inbox/index.md'
 
 jobs:
   update-inbox:
