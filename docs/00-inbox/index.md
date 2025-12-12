@@ -9,11 +9,11 @@
 
 ## 📥 最近更新 (Latest 5)
 
+- [KPT1212](./KPT1212.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-12</span>
 - [250910-0024-训练loss调试思路](./week-37/250910-0024-训练loss调试思路.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-11</span>
 - [251027-1431-VLA-VLA调研分享](./week-45/251027-1431-VLA-VLA调研分享.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-11</span>
 - [251113-1650-自动交易策略实现log](./week-50/251113-1650-自动交易策略实现log.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-11</span>
 - [251211-1650-deepseekV3_2](./week-50/251211-1650-deepseekV3_2.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-11</span>
-- [250908-0020-MoE llama结构](./week-37/250908-0020-MoE llama结构.md) <span style="opacity:0.6; font-size:0.8em; float:right">2025-12-11</span>
 
 ## 📅 待归档 (Backlog)
 
