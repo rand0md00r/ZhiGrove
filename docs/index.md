@@ -1,4 +1,11 @@
 # ZhiGrove · 知林
+```
+find docs -name "*.md" -print0 | xargs -0 -n1 python scripts/relocate_images.py
+
+python scripts/clean_unused_assets.py --dry-run
+
+python scripts/clean_unused_assets.py
+```
 
 > 个人研究型知识库：多模态大模型 / Flow Matching / MoE / 机器人学 / 函数调用优化等。
 
