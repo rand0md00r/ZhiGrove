@@ -1,1 +1,0 @@
-import{_ as s,c as i,o as e,ag as l}from"./chunks/framework.OaOo95RB.js";const k=JSON.parse('{"title":"ZhiGrove · 知林","description":"","frontmatter":{},"headers":[],"relativePath":"index.md","filePath":"index.md"}'),t={name:"index.md"};function n(h,a,r,o,p,d){return e(),i("div",null,[...a[0]||(a[0]=[l("",30)])])}const u=s(t,[["render",n]]);export{k as __pageData,u as default};
