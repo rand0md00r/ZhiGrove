@@ -1,12 +1,15 @@
-name: Deploy VitePress site to Pages
+name: Deploy Knowledge Base
 
 on:
+  # 允许在 main 分支 push 时触发
   push:
     branches: [main, master]
+  # 允许手动触发
   workflow_dispatch:
 
+# 权限配置：我们需要 write 权限来提交更新后的 index.md，以及部署 Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -21,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 
+          fetch-depth: 0 # ⚠️ 关键：必须抓取完整历史，脚本才能读取 Git 时间
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -32,6 +35,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ----------------------------------------------------------------
+      # 🚀 新增步骤 1：执行自动化脚本
+      # 此时依赖已安装，环境已就绪。脚本会更新本地 docs/00-inbox/index.md
+      # ----------------------------------------------------------------
+      - name: Run Update Inbox Script
+        run: node scripts/update-inbox.js
+
+      # ----------------------------------------------------------------
+      # 💾 新增步骤 2：将更新后的 index.md 提交回仓库
+      # 即使这里提交了代码，当前的 Runner 里的文件依然是更新后的状态
+      # [skip ci] 防止这个自动提交再次触发新的 workflow，避免死循环
+      # ----------------------------------------------------------------
+      - name: Commit Inbox Updates
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: auto update inbox index [skip ci]"
+          file_pattern: docs/00-inbox/index.md
+          branch: main
+
+      # ----------------------------------------------------------------
+      # 🏗️ 原有步骤：构建网站
+      # 此时 VitePress 读取的是已经被脚本修改过、且包含最新链接的 index.md
+      # ----------------------------------------------------------------
       - name: Build with VitePress
         run: npm run docs:build
 
